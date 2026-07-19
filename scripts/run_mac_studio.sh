@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${1:-$HOME/Projects/Radio2026/sionna_deepmimo_full}"
+if [[ -n "${1:-}" ]]; then
+  ROOT="$1"
+elif [[ -n "${TCSM_ROOT:-}" ]]; then
+  ROOT="$TCSM_ROOT"
+elif [[ -d "$HOME/Projects/Radio2026/Task-Oriented-Channel-Semantic-Map" ]]; then
+  ROOT="$HOME/Projects/Radio2026/Task-Oriented-Channel-Semantic-Map"
+else
+  ROOT="$HOME/Projects/Radio2026/sionna_deepmimo_full"
+fi
 SIONNA_TRAIN_SHARD="${2:-${TCSM_SIONNA_TRAIN_SHARD:-}}"
+if [[ ! -f "$ROOT/pyproject.toml" ]]; then
+  printf 'unable to locate T-CSM repository: %s\n' "$ROOT" >&2
+  exit 1
+fi
 cd "$ROOT"
 mkdir -p logs
 

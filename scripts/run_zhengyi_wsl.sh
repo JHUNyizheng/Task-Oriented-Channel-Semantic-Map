@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${1:-/mnt/d/Projects/Radio2026/tcsm_rt_full/sionna_deepmimo_full}"
+if [[ -n "${1:-}" ]]; then
+  ROOT="$1"
+elif [[ -n "${TCSM_ROOT:-}" ]]; then
+  ROOT="$TCSM_ROOT"
+elif [[ -d /mnt/d/Projects/Radio2026/tcsm_rt_full/sourcev11 ]]; then
+  ROOT=/mnt/d/Projects/Radio2026/tcsm_rt_full/sourcev11
+else
+  ROOT=/mnt/d/Projects/Radio2026/tcsm_rt_full/sionna_deepmimo_full
+fi
+if [[ ! -f "$ROOT/pyproject.toml" ]]; then
+  printf 'unable to locate T-CSM repository: %s\n' "$ROOT" >&2
+  exit 1
+fi
 cd "$ROOT"
 mkdir -p logs
 
