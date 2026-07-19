@@ -80,7 +80,7 @@ class RadioUNet(torch.nn.Module):
 
 
 class StormRMEOperator(torch.nn.Module):
-    """Task-head adaptation of the published ICC 2025 STORM estimator.
+    """Task-head adaptation of the 2024 STORM preprint estimator.
 
     The official implementation constructs translation- and rotation-invariant features for
     every target location before attention. This adaptation preserves that defining operation

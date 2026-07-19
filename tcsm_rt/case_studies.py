@@ -16,6 +16,13 @@ from .sampling import sample_scene_indices_ordered, valid_query_indices
 from .schema import load_scene
 
 
+DISPLAY_NAMES = {
+    "storm": "STORM (preprint)",
+    "set_transformer": "Set Transformer",
+    "radiounet": "RadioUNet",
+}
+
+
 def _select_baseline(frame: pd.DataFrame, candidates: list[str]) -> str:
     selected = frame[frame["model"].isin(candidates)]
     grouped = selected.groupby("model", as_index=False)["mean_policy_gap"].mean()
@@ -401,7 +408,7 @@ def generate_case_studies(config: dict[str, Any], run_dir: Path) -> dict[str, An
             support_route,
             ours_maps,
             baseline_maps,
-            baseline_name,
+            DISPLAY_NAMES.get(baseline_name, baseline_name),
             case,
             int(config["model"]["near_angles"]),
         )
