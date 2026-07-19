@@ -4,19 +4,30 @@ import os
 import subprocess
 import sys
 
+import mitsuba as mi
 
-def test_explicit_llvm_variant_is_selected_before_sionna_import() -> None:
+
+def test_explicit_platform_variant_is_selected_before_sionna_import() -> None:
+    preferred = (
+        "llvm_ad_mono_polarized",
+        "cuda_ad_mono_polarized",
+        "llvm_ad_rgb",
+        "scalar_rgb",
+    )
+    requested = next((name for name in preferred if name in mi.variants()), None)
+    assert requested is not None, "Mitsuba exposes no supported test variant"
+
     environment = dict(os.environ)
-    environment["TCSM_MITSUBA_VARIANT"] = "llvm_ad_mono_polarized"
+    environment["TCSM_MITSUBA_VARIANT"] = requested
     completed = subprocess.run(
         [
             sys.executable,
             "-c",
             (
                 "from tcsm_rt.sionna_backend import configure_mitsuba_variant; "
-                "assert configure_mitsuba_variant() == 'llvm_ad_mono_polarized'; "
+                f"assert configure_mitsuba_variant() == {requested!r}; "
                 "import sionna.rt, mitsuba as mi; "
-                "assert mi.variant() == 'llvm_ad_mono_polarized'"
+                f"assert mi.variant() == {requested!r}"
             ),
         ],
         check=True,

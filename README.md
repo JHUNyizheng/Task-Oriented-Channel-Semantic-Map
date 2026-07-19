@@ -46,6 +46,8 @@ Paper-facing diagnostics are explicit stages rather than configuration-only clai
 tcsm-rt threshold-sensitivity --config configs/full_rt.yaml
 tcsm-rt robustness --config configs/full_rt.yaml
 tcsm-rt profile --config configs/full_rt.yaml
+tcsm-rt cases --config configs/full_rt.yaml
+tcsm-rt deepmimo-audit --config configs/full_rt.yaml
 ```
 
 The threshold stage keeps the declared low/high hysteresis ratio while sweeping the high margin
@@ -57,6 +59,17 @@ count, and device-memory measurements.
 The ray-budget convergence study is run before full Sionna generation. The selected sample count
 must satisfy the declared channel and task-label convergence tolerances.
 
+Before full training, `training_label_coverage.json` must confirm that all 32 declared Sionna
+training configurations are present, the aggregate near/cross/far fractions each exceed the
+configured minimum, every environment modality is populated, and all task codebooks have usable
+label support. The full pipeline stops when this gate fails; it does not rebalance a collapsed
+label distribution silently.
+
+The `cases` stage selects auditable ID and OOD examples from evaluation records, preserves the
+actual sampled trajectory order, and renders environment inputs, task truth, predictions, policy
+loss, and five task-gate maps from saved arrays. For every gate, zero means exclusive use of the
+local prior and one means exclusive use of the neural branch.
+
 ## Data
 
 The pipeline downloads DeepMIMO scenarios through the official package interfaces. Raw scenario
@@ -67,6 +80,13 @@ The main benchmark uses six official Sionna scenes and the complete valid receiv
 DeepMIMO `city_0_newyork_28` and `city_17_seattle_28`. Configuration files record spatially
 disjoint training, ID, geometry-OOD, system-OOD, and compound-OOD splits.
 
+DeepMIMO evaluation uses contiguous coordinate stripes rather than random receiver splits. The
+nearest 60% of each transmitter's valid receivers are support candidates, the next 20% form a
+spatial-ID query region, and the furthest 20% form a spatial holdout. The external audit covers
+110,280 valid receiver--transmitter samples across the six released transmitter views and reports
+discarded no-path receivers, split counts, task availability, and cache hashes. It permits RSS and
+far-beam claims only.
+
 ## Baselines and adaptations
 
 Every baseline is linked to an existing publication in
@@ -74,6 +94,11 @@ Every baseline is linked to an existing publication in
 preserved architectural components from task-head adaptations for KNN, IDW, DeepSets, Set
 Transformer, RadioUNet, STORM, FNO, and WNO. The repository does not present adapted baselines as
 unchanged reproductions of their source papers.
+
+STORM is identified as an arXiv preprint baseline. RadioUNet, STORM, FNO, and WNO retain the
+published structural bias named in the registry while using common T-CSM task heads; their results
+therefore test adapted model families under a shared interface rather than claim byte-identical
+reproduction of the original application.
 
 ## Distributed execution
 
@@ -86,6 +111,11 @@ merge scripts verify SHA-256 digests and reject evaluation-split leakage.
 
 No machine password, access token, raw proprietary data, or private path is stored in this
 repository.
+
+When metric columns change, evaluation archives the prior `evaluation_raw.csv` under a numbered
+schema-backup name and writes `evaluation_schema_migration.json` before recomputation. This avoids
+combining rows produced by incompatible metric definitions. Result shards are accepted only after
+cache hashes, seed ownership, absolute-path rewriting, and split leakage checks pass.
 
 ## Citation
 
