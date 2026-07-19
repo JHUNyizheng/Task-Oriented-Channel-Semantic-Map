@@ -199,6 +199,7 @@ def _load_point_model(checkpoint_path: Path, device: torch.device) -> tuple[str,
             int(model_config["hidden"]),
             *counts,
             ablation=ablation,
+            gate_evidence_features=bool(model_config.get("gate_evidence_features", False)),
         )
     elif name == "deepsets":
         model = DeepSetsOperator(checkpoint["support_dim"], checkpoint["query_dim"], int(model_config["hidden"]), counts)

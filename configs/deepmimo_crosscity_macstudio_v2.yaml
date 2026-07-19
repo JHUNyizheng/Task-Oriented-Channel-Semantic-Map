@@ -1,0 +1,66 @@
+run:
+  name: deepmimo_crosscity_macstudio_v2
+  seed: 20260719
+  output_dir: outputs/macstudio_deepmimo
+  resume: true
+  device: mps
+  train_steps: 8000
+  train_seeds: [53, 71]
+  eval_seeds: [101, 211, 307, 401, 503]
+data:
+  grid_size: 35
+  cell_size_m: 2.0
+  support_counts: [1, 2, 3, 5, 8, 12, 24, 61, 122, 245]
+  sampling_modes: [scatter, trajectory, coverage_trajectory]
+  sionna:
+    enabled: false
+    scenes: [simple_street_canyon]
+    configs_per_split: {train: 0, id: 0, geometry_ood: 0, system_ood: 0, compound_ood: 0}
+    train_frequencies_ghz: [28]
+    train_arrays: [128]
+    ood_frequencies_ghz: [60]
+    ood_arrays: [160]
+    max_depth: 4
+    samples_per_source: 500000
+    diffuse_reflection: true
+    material_frequency_policy: clamp_to_itu_range
+    channel_mode: explicit_array
+    explicit_batch_size: 16
+    explicit_validation_points_per_scene: 0
+  deepmimo:
+    enabled: true
+    scenarios: [city_0_newyork_28, city_17_seattle_28]
+    all_active_receivers: true
+    all_transmitters: true
+    max_paths: 25
+model:
+  hidden: 160
+  local_neighbors: 16
+  prior_pseudocount: 0.1
+  gate_evidence_features: true
+  far_beams: 41
+  near_angles: 41
+  near_ranges: 10
+  baselines: [gated_hlg]
+  learning_rate: 0.002
+  weight_decay: 0.0001
+  query_batch: 768
+system:
+  tx_power_dbm: 30.0
+  bandwidth_hz: 100000000.0
+  noise_figure_db: 7.0
+  regime_low_margin_bps_hz: 0.20
+  regime_high_margin_bps_hz: 0.75
+external_training:
+  source_split: deepmimo_newyork
+  spatial_split: 0
+  checkpoint_subdir: deepmimo_crosscity_checkpoints_v2
+evaluation:
+  scene_splits: [deepmimo_newyork, deepmimo_seattle_ood]
+  checkpoint_subdir: deepmimo_crosscity_checkpoints_v2
+  output_prefix: deepmimo_crosscity_v2
+statistics:
+  bootstrap_samples: 5000
+  confidence: 0.95
+  paired_test: wilcoxon
+  multiple_testing: holm

@@ -65,6 +65,27 @@ def test_external_support_zeros_unavailable_task_modalities():
     np.testing.assert_allclose(batch.local_prior["near_angle"].numpy(), 0.0)
 
 
+def test_dirichlet_smoothed_prior_retains_unobserved_far_classes() -> None:
+    arrays = _external_scene()
+    model_config = {
+        "far_beams": 17,
+        "near_angles": 17,
+        "near_ranges": 5,
+        "local_neighbors": 2,
+        "prior_pseudocount": 0.1,
+    }
+    batch = build_point_batch(
+        arrays,
+        np.array([0]),
+        np.array([1, 3, 5, 7]),
+        model_config,
+        torch.device("cpu"),
+    )
+    probability = torch.softmax(batch.local_prior["far"], dim=-1)
+    torch.testing.assert_close(probability.sum(dim=-1), torch.ones((1, 4)))
+    assert torch.all(probability > 0)
+
+
 def test_external_metrics_do_not_report_near_field_or_policy_results():
     arrays = _external_scene()
     query = np.arange(9)

@@ -22,6 +22,7 @@ class GatedHLG(torch.nn.Module):
         near_range_count: int,
         attention_heads: int = 4,
         ablation: str | None = None,
+        gate_evidence_features: bool = False,
     ) -> None:
         super().__init__()
         self.environment_dim = query_dim - 4
@@ -29,6 +30,7 @@ class GatedHLG(torch.nn.Module):
             raise ValueError("query tokens must contain xyz, environment features, and support ratio")
         support_measurement_dim = support_dim - self.environment_dim
         self.ablation = ablation
+        self.gate_evidence_features = gate_evidence_features
         self.environment_encoder = torch.nn.Sequential(
             torch.nn.Linear(self.environment_dim, hidden),
             torch.nn.GELU(),
@@ -60,15 +62,46 @@ class GatedHLG(torch.nn.Module):
             torch.nn.GELU(),
         )
         self.heads = MultiTaskHeads(hidden, far_count, near_angle_count, near_range_count)
+        gate_input_dim = hidden * 4 + (4 if gate_evidence_features else 0)
         self.gates = torch.nn.ModuleDict(
             {
                 name: torch.nn.Sequential(
-                    torch.nn.Linear(hidden * 4, hidden),
+                    torch.nn.Linear(gate_input_dim, hidden),
                     torch.nn.GELU(),
                     torch.nn.Linear(hidden, 1),
                 )
                 for name in ("rss", *TASK_NAMES)
             }
+        )
+
+    @staticmethod
+    def _gate_evidence(
+        prediction: torch.Tensor,
+        prior: torch.Tensor,
+    ) -> torch.Tensor:
+        if prediction.ndim == 2:
+            difference = prediction - prior
+            return torch.stack(
+                [
+                    torch.tanh(prediction),
+                    torch.tanh(prior),
+                    torch.tanh(torch.abs(difference)),
+                    torch.tanh(prediction * prior),
+                ],
+                dim=-1,
+            )
+        neural_probability = torch.softmax(prediction, dim=-1)
+        prior_probability = torch.softmax(prior, dim=-1)
+        neural_confidence = torch.max(neural_probability, dim=-1).values
+        prior_confidence = torch.max(prior_probability, dim=-1).values
+        agreement = torch.sum(neural_probability * prior_probability, dim=-1)
+        disagreement = 0.5 * torch.sum(
+            torch.abs(neural_probability - prior_probability),
+            dim=-1,
+        )
+        return torch.stack(
+            [neural_confidence, prior_confidence, agreement, disagreement],
+            dim=-1,
         )
 
     def forward(
@@ -131,7 +164,13 @@ class GatedHLG(torch.nn.Module):
             if self.ablation == "fixed_gate":
                 gamma = torch.full_like(self.gates[name](joint), 0.5)
             else:
-                gamma = torch.sigmoid(self.gates[name](joint))
+                gate_input = joint
+                if self.gate_evidence_features:
+                    gate_input = torch.cat(
+                        [joint, self._gate_evidence(prediction, local_prior[name])],
+                        dim=-1,
+                    )
+                gamma = torch.sigmoid(self.gates[name](gate_input))
             prior = local_prior[name]
             if prediction.ndim == 2:
                 gamma = gamma.squeeze(-1)

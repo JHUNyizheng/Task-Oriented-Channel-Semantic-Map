@@ -91,6 +91,12 @@ def build_point_batch(
         distribution = np.zeros((len(query_indices), count), dtype=np.float32)
         for column in range(neighbour_count):
             distribution[np.arange(len(query_indices)), neighbours[:, column]] += weights[:, column]
+        pseudocount = float(model_config.get("prior_pseudocount", 0.0))
+        if pseudocount < 0.0:
+            raise ValueError("model.prior_pseudocount must be non-negative")
+        if pseudocount:
+            distribution += pseudocount / count
+            distribution /= np.sum(distribution, axis=1, keepdims=True)
         return np.log(np.maximum(distribution, 1e-6)).astype(np.float32)
 
     local_availability = support_availability[local_indices]
@@ -274,7 +280,14 @@ def _new_model(name: str, batch: PointBatch, config: dict[str, Any]) -> torch.nn
     )
     if name == "gated_hlg" or name.startswith("gated_hlg_"):
         ablation = name.removeprefix("gated_hlg_") if name != "gated_hlg" else None
-        return GatedHLG(support_dim, query_dim, hidden, *counts, ablation=ablation)
+        return GatedHLG(
+            support_dim,
+            query_dim,
+            hidden,
+            *counts,
+            ablation=ablation,
+            gate_evidence_features=bool(model_config.get("gate_evidence_features", False)),
+        )
     if name == "deepsets":
         return DeepSetsOperator(support_dim, query_dim, hidden, counts)
     if name == "set_transformer":

@@ -53,6 +53,27 @@ def test_gated_hlg_component_ablations_preserve_interface():
             torch.testing.assert_close(output["gates"]["far"], torch.full((1, 5), 0.5))
 
 
+def test_evidence_conditioned_gate_responds_to_local_prior() -> None:
+    torch.manual_seed(9)
+    model = GatedHLG(24, 14, 32, 17, 17, 5, gate_evidence_features=True).eval()
+    support = torch.randn(1, 7, 24)
+    query = torch.randn(1, 5, 14)
+    local_indices = torch.randint(0, 7, (1, 5, 3))
+    first_prior = {
+        "rss": torch.zeros(1, 5),
+        "regime": torch.zeros(1, 5, 3),
+        "far": torch.zeros(1, 5, 17),
+        "near_angle": torch.zeros(1, 5, 17),
+        "near_range": torch.zeros(1, 5, 5),
+    }
+    second_prior = {key: value.clone() for key, value in first_prior.items()}
+    second_prior["far"][..., 0] = 8.0
+    with torch.inference_mode():
+        first = model(support, query, local_indices, first_prior)
+        second = model(support, query, local_indices, second_prior)
+    assert not torch.allclose(first["gates"]["far"], second["gates"]["far"])
+
+
 def test_grid_baselines_preserve_odd_grid_shape():
     x = torch.randn(2, 8, 35, 35)
     for model in (
