@@ -118,6 +118,40 @@ def link_budget_snr_scale(
     return float(10.0 ** ((tx_power_dbm - noise_dbm) / 10.0))
 
 
+def classify_near_cross_far(
+    distance_m: np.ndarray,
+    rayleigh_distance_m: np.ndarray | float,
+    far_codebook_loss_bps_hz: np.ndarray,
+    low_margin_bps_hz: np.ndarray | float,
+    high_margin_bps_hz: np.ndarray | float,
+) -> np.ndarray:
+    """Apply the paper's geometry-and-rate near/cross/far definition.
+
+    Coding is 0=near, 1=cross, and 2=far. The Rayleigh boundary belongs to
+    the near-geometry region. Rate margins are inclusive at their respective
+    near and far decisions.
+    """
+    loss = np.asarray(far_codebook_loss_bps_hz, dtype=np.float64)
+    distance = np.broadcast_to(np.asarray(distance_m, dtype=np.float64), loss.shape)
+    rayleigh = np.broadcast_to(np.asarray(rayleigh_distance_m, dtype=np.float64), loss.shape)
+    low = np.broadcast_to(np.asarray(low_margin_bps_hz, dtype=np.float64), loss.shape)
+    high = np.broadcast_to(np.asarray(high_margin_bps_hz, dtype=np.float64), loss.shape)
+    if np.any(~np.isfinite(distance)) or np.any(distance <= 0.0):
+        raise ValueError("distance_m must contain positive finite values")
+    if np.any(~np.isfinite(rayleigh)) or np.any(rayleigh <= 0.0):
+        raise ValueError("rayleigh_distance_m must contain positive finite values")
+    if np.any(~np.isfinite(loss)) or np.any(loss < -1e-6):
+        raise ValueError("far_codebook_loss_bps_hz must contain finite nonnegative values")
+    if np.any(~np.isfinite(low)) or np.any(~np.isfinite(high)):
+        raise ValueError("regime margins must be finite")
+    if np.any(low < 0.0) or np.any(low >= high):
+        raise ValueError("all regime margins must satisfy 0 <= low < high")
+    regime = np.full(loss.shape, 1, dtype=np.int8)
+    regime[(distance <= rayleigh) & (loss >= high)] = 0
+    regime[(distance > rayleigh) & (loss <= low)] = 2
+    return regime
+
+
 def make_task_labels(
     channel: np.ndarray,
     frequency_hz: float,
@@ -163,20 +197,23 @@ def make_task_labels(
     oracle_rate = np.maximum(far_best_rate, near_best_rate)
     far_codebook_loss = oracle_rate - far_best_rate
     advantage = near_best_rate - far_best_rate
-    regime = np.full(channels.shape[0], 1, dtype=np.int8)
     if distance_m is None:
-        conventional_near = np.ones(channels.shape[0], dtype=bool)
-        conventional_far = np.ones(channels.shape[0], dtype=bool)
         distances = np.full(channels.shape[0], np.nan, dtype=np.float64)
+        regime = np.full(channels.shape[0], 1, dtype=np.int8)
+        regime[far_codebook_loss >= high_margin_bps_hz] = 0
+        regime[far_codebook_loss <= low_margin_bps_hz] = 2
     else:
         distances = np.asarray(distance_m, dtype=np.float64).reshape(-1)
         if distances.shape[0] != channels.shape[0] or np.any(distances <= 0):
             raise ValueError("distance_m must contain one positive value per query")
         boundary = rayleigh_distance(array_size, frequency_hz)
-        conventional_near = distances <= boundary
-        conventional_far = distances > boundary
-    regime[conventional_near & (far_codebook_loss >= high_margin_bps_hz)] = 0
-    regime[conventional_far & (far_codebook_loss <= low_margin_bps_hz)] = 2
+        regime = classify_near_cross_far(
+            distances,
+            boundary,
+            far_codebook_loss,
+            low_margin_bps_hz,
+            high_margin_bps_hz,
+        )
     rss_linear = np.sum(np.abs(channels) ** 2, axis=1)
     return {
         "rss_db": (10.0 * np.log10(np.maximum(rss_linear, 1e-30))).astype(np.float32),

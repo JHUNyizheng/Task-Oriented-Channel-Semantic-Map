@@ -1,6 +1,7 @@
 import numpy as np
 
 from tcsm_rt.physics import (
+    classify_near_cross_far,
     codebook_rates,
     centered_ula_positions,
     channel_correlation,
@@ -52,6 +53,25 @@ def test_task_label_shapes_and_nonnegative_rates():
     assert labels["near_rates"].shape == (9, 85)
     assert np.all(labels["oracle_rate_bps_hz"] >= 0)
     assert set(np.unique(labels["regime"])) <= {0, 1, 2}
+    np.testing.assert_allclose(
+        labels["oracle_rate_bps_hz"],
+        np.maximum(np.max(labels["far_rates"], axis=1), np.max(labels["near_rates"], axis=1)),
+        rtol=0.0,
+        atol=1e-6,
+    )
+    np.testing.assert_allclose(
+        labels["far_codebook_loss_bps_hz"],
+        labels["oracle_rate_bps_hz"] - np.max(labels["far_rates"], axis=1),
+        rtol=0.0,
+        atol=1e-6,
+    )
+
+
+def test_regime_definition_and_inclusive_boundaries():
+    distance = np.array([10.0, 10.0, 10.0, 10.1, 10.1, 10.1])
+    loss = np.array([0.75, 0.74, 0.20, 0.20, 0.21, 0.75])
+    regime = classify_near_cross_far(distance, 10.0, loss, 0.20, 0.75)
+    np.testing.assert_array_equal(regime, np.array([0, 1, 1, 2, 1, 1], dtype=np.int8))
 
 
 def test_ddri_is_large_for_orthogonal_columns():

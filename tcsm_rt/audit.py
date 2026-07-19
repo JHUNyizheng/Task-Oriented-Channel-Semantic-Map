@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from .metrics import policy_gap, rmse_db
+from .physics import classify_near_cross_far
 from .provenance import sha256_file, write_json_atomic
 from .schema import load_scene
 
@@ -188,10 +189,13 @@ def audit_run(run_dir: str | Path) -> dict[str, Any]:
             if system and "far_codebook_loss_bps_hz" in arrays:
                 low = float(system["regime_low_margin_bps_hz"])
                 high = float(system["regime_high_margin_bps_hz"])
-                near_geometry = arrays["distance_m"] <= arrays["rayleigh_distance_m"]
-                expected_regime = np.full(len(arrays["regime"]), 1, dtype=np.int8)
-                expected_regime[near_geometry & (arrays["far_codebook_loss_bps_hz"] >= high)] = 0
-                expected_regime[(~near_geometry) & (arrays["far_codebook_loss_bps_hz"] <= low)] = 2
+                expected_regime = classify_near_cross_far(
+                    arrays["distance_m"],
+                    arrays["rayleigh_distance_m"],
+                    arrays["far_codebook_loss_bps_hz"],
+                    low,
+                    high,
+                )
                 mismatch = float(np.mean(expected_regime != arrays["regime"]))
                 if mismatch > 0.0:
                     errors.append(f"regime-label recomputation mismatch={mismatch:.3%}: {cache}")

@@ -13,7 +13,7 @@ baselines:
     doi: 10.1109/TIT.1967.1053964
     url: https://doi.org/10.1109/TIT.1967.1053964
     implementation: scipy.spatial.cKDTree
-    adaptation: "Three-neighbor spatial voting; continuous RSS uses an unweighted neighbor mean and task labels use weighted class votes."
+    adaptation: "Three-neighbor spatial voting; continuous RSS uses an unweighted neighbor mean and task labels use equal-weight class votes."
   idw:
     display_name: IDW
     paper: "A Two-Dimensional Interpolation Function for Irregularly-Spaced Data"
@@ -56,14 +56,16 @@ baselines:
     display_name: STORM
     paper: "Spatial Transformer for Radio Map Estimation"
     authors: [Q. V. Pham, D. Romero]
-    venue: arXiv preprint
-    year: 2024
-    publication_status: preprint
-    url: https://arxiv.org/abs/2411.01211
+    venue: IEEE International Conference on Communications
+    year: 2025
+    pages: 6155-6160
+    doi: 10.1109/ICC52391.2025.11160709
+    publication_status: published_conference_paper
+    url: https://doi.org/10.1109/ICC52391.2025.11160709
     official_code: https://github.com/uiano/storm_rme
     official_commit: 573adc8d41774323cb0e0adc9a750add7c33a4c1
     implementation: in_repository_task_head_adaptation
-    adaptation: "The query-conditioned translation/rotation-invariant pair features and attention mechanism are retained; the scalar radio-map head is replaced by common T-CSM task heads. STORM is identified as a preprint baseline throughout the manuscript."
+    adaptation: "The query-conditioned translation/rotation-invariant pair features and attention mechanism are retained; the scalar radio-map head is replaced by common T-CSM task heads. The source is the published IEEE ICC 2025 paper and its archived official implementation."
   fno:
     display_name: FNO
     paper: "Fourier Neural Operator for Parametric Partial Differential Equations"

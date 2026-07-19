@@ -58,7 +58,7 @@ system:
 thresholds:
   fixed_bps_hz: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
   low_to_high_ratio: 0.2666666667
-  sensitivity_train_seeds: [11, 37]
+  sensitivity_train_seeds: [11, 23, 37]
   models: [storm, gated_hlg]
   support_count: 24
   sampling_mode: trajectory
@@ -67,7 +67,7 @@ thresholds:
   mcs_spectral_efficiency_bps_hz: [0.2344, 0.3770, 0.6016, 0.8770, 1.1758, 1.4766, 1.6953, 1.9141, 2.1602, 2.4063, 2.5703, 2.7305, 3.0293, 3.3223, 3.6094, 3.9023, 4.2129, 4.5234, 4.8164, 5.1152, 5.3320, 5.5547]
 robustness:
   models: [set_transformer, storm, radiounet, gated_hlg]
-  train_seeds: [11, 37]
+  train_seeds: [11, 23, 37]
   support_count: 24
   sampling_mode: trajectory
   eval_seeds: [101, 211, 307, 401, 503]

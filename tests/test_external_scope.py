@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from tcsm_rt.evaluation import _prediction_metrics, evaluation_partitions
+from tcsm_rt.evaluation import _baseline_prediction, _prediction_metrics, evaluation_partitions
 from tcsm_rt.learning import build_point_batch
 from tcsm_rt.physics import make_task_labels
 
@@ -84,6 +84,32 @@ def test_dirichlet_smoothed_prior_retains_unobserved_far_classes() -> None:
     probability = torch.softmax(batch.local_prior["far"], dim=-1)
     torch.testing.assert_close(probability.sum(dim=-1), torch.ones((1, 4)))
     assert torch.all(probability > 0)
+
+
+def test_gated_local_prior_matches_standalone_idw_decision() -> None:
+    arrays = _external_scene()
+    support = np.array([0, 2, 4, 6])
+    query = np.array([1, 3, 5, 7])
+    model_config = {
+        "far_beams": 17,
+        "near_angles": 17,
+        "near_ranges": 5,
+        "local_neighbors": 3,
+    }
+    config = {"model": model_config}
+    standalone = _baseline_prediction(arrays, support, query, config, "idw")
+    batch = build_point_batch(arrays, support, query, model_config, torch.device("cpu"))
+
+    np.testing.assert_array_equal(
+        np.argmax(standalone["far_logits"], axis=1),
+        np.argmax(batch.local_prior["far"][0].numpy(), axis=1),
+    )
+    np.testing.assert_allclose(
+        standalone["rss_db"],
+        batch.local_prior["rss"][0].numpy() * 20.0 - 100.0,
+        rtol=1e-5,
+        atol=1e-5,
+    )
 
 
 def test_external_metrics_do_not_report_near_field_or_policy_results():

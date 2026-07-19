@@ -50,8 +50,14 @@ if [[ "$status" -ne 0 ]]; then
   exit 1
 fi
 
-"$PYTHON" scripts/merge_result_shard.py --source outputs/zhengyi_sionna_shard_b --destination outputs/zhengyi_sionna | tee logs/merge_sionna_shard_b.json
-"$PYTHON" scripts/merge_result_shard.py --source outputs/zhengyi_sionna_shard_c --destination outputs/zhengyi_sionna | tee logs/merge_sionna_shard_c.json
+"$PYTHON" scripts/merge_result_shard.py \
+  --source outputs/zhengyi_sionna_shard_b \
+  --destination outputs/zhengyi_sionna \
+  | tee logs/merge_sionna_shard_b.json
+"$PYTHON" scripts/merge_result_shard.py \
+  --source outputs/zhengyi_sionna_shard_c \
+  --destination outputs/zhengyi_sionna \
+  | tee logs/merge_sionna_shard_c.json
 
 scene_count="$(find outputs/zhengyi_sionna/scenes -name '*.npz' | wc -l | tr -d ' ')"
 if [[ "$scene_count" -ne 96 ]]; then
@@ -59,12 +65,20 @@ if [[ "$scene_count" -ne 96 ]]; then
   exit 1
 fi
 
-"$PYTHON" -m tcsm_rt.cli train-point --config "$CONFIG" | tee logs/train_point_zhengyi.json
-"$PYTHON" -m tcsm_rt.cli train-grid --config "$CONFIG" | tee logs/train_grid_zhengyi.json
-"$PYTHON" -m tcsm_rt.cli evaluate --config "$CONFIG" | tee logs/evaluate_zhengyi.json
-"$PYTHON" -m tcsm_rt.cli threshold-sensitivity --config "$CONFIG" | tee logs/threshold_sensitivity_zhengyi.json
-"$PYTHON" -m tcsm_rt.cli robustness --config "$CONFIG" | tee logs/robustness_zhengyi.json
-"$PYTHON" -m tcsm_rt.cli profile --config "$CONFIG" | tee logs/deployment_profile_zhengyi.json
-"$PYTHON" -m tcsm_rt.cli cases --config "$CONFIG" | tee logs/case_gallery_zhengyi.json
-"$PYTHON" -m tcsm_rt.cli audit --run-dir outputs/zhengyi_sionna | tee logs/audit_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli train-point --config "$CONFIG" \
+  | tee logs/train_point_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli train-grid --config "$CONFIG" \
+  | tee logs/train_grid_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli evaluate --config "$CONFIG" \
+  | tee logs/evaluate_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli threshold-sensitivity --config "$CONFIG" \
+  | tee logs/threshold_sensitivity_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli robustness --config "$CONFIG" \
+  | tee logs/robustness_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli profile --config "$CONFIG" \
+  | tee logs/deployment_profile_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli cases --config "$CONFIG" \
+  | tee logs/case_gallery_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli audit --run-dir outputs/zhengyi_sionna \
+  | tee logs/audit_zhengyi.json
 

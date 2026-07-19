@@ -21,6 +21,7 @@ from .evaluation import (
 from .grid_learning import GRID_MODELS
 from .learning import accelerator_memory_mb, reset_peak_memory, resolve_device, synchronize_device
 from .metrics import clustered_bootstrap_ci
+from .physics import classify_near_cross_far
 from .provenance import write_json_atomic
 from .sampling import sample_scene_indices, valid_query_indices
 from .schema import load_scene
@@ -35,17 +36,13 @@ def regime_labels_for_margins(
     high_margin_bps_hz: float | np.ndarray,
 ) -> np.ndarray:
     """Re-label a cached scene without recomputing channels or codebook rates."""
-    loss = np.asarray(arrays["far_codebook_loss_bps_hz"], dtype=np.float64)
-    distance = np.asarray(arrays["distance_m"], dtype=np.float64)
-    rayleigh = np.asarray(arrays["rayleigh_distance_m"], dtype=np.float64)
-    low = np.broadcast_to(np.asarray(low_margin_bps_hz, dtype=np.float64), loss.shape)
-    high = np.broadcast_to(np.asarray(high_margin_bps_hz, dtype=np.float64), loss.shape)
-    if np.any(low < 0) or np.any(low >= high):
-        raise ValueError("all regime margins must satisfy 0 <= low < high")
-    regime = np.full(loss.shape, 1, dtype=np.int8)
-    regime[(distance <= rayleigh) & (loss >= high)] = 0
-    regime[(distance > rayleigh) & (loss <= low)] = 2
-    return regime
+    return classify_near_cross_far(
+        arrays["distance_m"],
+        arrays["rayleigh_distance_m"],
+        arrays["far_codebook_loss_bps_hz"],
+        low_margin_bps_hz,
+        high_margin_bps_hz,
+    )
 
 
 def mcs_adaptive_margins(

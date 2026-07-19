@@ -55,3 +55,4 @@ def test_external_training_view_uses_only_declared_spatial_partition() -> None:
         np.array([True, True, False, False, False, False, False, False]),
     )
     assert restricted is not arrays
+
