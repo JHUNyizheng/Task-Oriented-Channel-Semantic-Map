@@ -52,5 +52,11 @@ TCSM_SAMPLES_PER_SOURCE="$($PYTHON -c 'import json; print(json.load(open("output
   | tee logs/train_grid_zhengyi.json
 "$PYTHON" -m tcsm_rt.cli evaluate --config configs/full_rt_zhengyi.yaml \
   | tee logs/evaluate_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli threshold-sensitivity --config configs/full_rt_zhengyi.yaml \
+  | tee logs/threshold_sensitivity_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli robustness --config configs/full_rt_zhengyi.yaml \
+  | tee logs/robustness_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli profile --config configs/full_rt_zhengyi.yaml \
+  | tee logs/deployment_profile_zhengyi.json
 "$PYTHON" -m tcsm_rt.cli audit --run-dir outputs/zhengyi_sionna \
   | tee logs/audit_zhengyi.json
