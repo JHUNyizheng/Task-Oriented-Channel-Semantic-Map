@@ -43,6 +43,12 @@ def validate_config(config: dict[str, Any]) -> None:
         raise ValueError("far_beams must be odd so that broadside is represented")
     if int(config["model"]["near_angles"]) % 2 == 0:
         raise ValueError("near_angles must be odd so that broadside is represented")
+    sionna = config["data"].get("sionna", {})
+    material_policy = str(sionna.get("material_frequency_policy", "strict"))
+    if material_policy not in {"strict", "clamp_to_itu_range"}:
+        raise ValueError(
+            "data.sionna.material_frequency_policy must be strict or clamp_to_itu_range"
+        )
     system = config["system"]
     if float(system["bandwidth_hz"]) <= 0:
         raise ValueError("system.bandwidth_hz must be positive")

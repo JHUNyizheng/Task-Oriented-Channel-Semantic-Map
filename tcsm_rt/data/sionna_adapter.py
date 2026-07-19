@@ -36,6 +36,90 @@ def _scene_constant(name: str) -> str:
         raise ValueError(f"unknown Sionna scene: {name}") from error
 
 
+def _configure_itu_material_frequency(
+    scene: Any,
+    requested_frequency_hz: float,
+    policy: str,
+) -> dict[str, Any]:
+    """Freeze Sionna ITU materials at auditable in-range frequencies."""
+    from sionna.rt.radio_materials.itu import ITU_MATERIALS_PROPERTIES  # type: ignore
+
+    if policy not in {"strict", "clamp_to_itu_range"}:
+        raise ValueError(f"unknown ITU material frequency policy: {policy}")
+    requested_frequency_ghz = float(requested_frequency_hz) / 1e9
+    material_records: list[dict[str, Any]] = []
+    for name, material in sorted(scene.radio_materials.items()):
+        itu_type = getattr(material, "itu_type", None)
+        if itu_type is None:
+            continue
+        intervals = ITU_MATERIALS_PROPERTIES[str(itu_type)]
+        selected_interval = next(
+            (
+                (float(lower), float(upper), coefficients)
+                for (lower, upper), coefficients in intervals.items()
+                if float(lower) <= requested_frequency_ghz <= float(upper)
+            ),
+            None,
+        )
+        clamped = selected_interval is None
+        if clamped:
+            valid_ranges = [[float(lower), float(upper)] for lower, upper in intervals]
+            if policy == "strict":
+                raise ValueError(
+                    f"ITU material {itu_type!r} is undefined at "
+                    f"{requested_frequency_ghz:g} GHz; valid ranges are {valid_ranges} GHz"
+                )
+            lower, upper, coefficients = min(
+                (
+                    (float(lower), float(upper), coefficients)
+                    for (lower, upper), coefficients in intervals.items()
+                ),
+                key=lambda item: min(
+                    abs(requested_frequency_ghz - item[0]),
+                    abs(requested_frequency_ghz - item[1]),
+                ),
+            )
+            evaluation_frequency_ghz = min(
+                (lower, upper),
+                key=lambda boundary: abs(requested_frequency_ghz - boundary),
+            )
+        else:
+            lower, upper, coefficients = selected_interval
+            evaluation_frequency_ghz = requested_frequency_ghz
+        a, b, c, d = (float(value) for value in coefficients)
+        relative_permittivity = a * evaluation_frequency_ghz**b
+        conductivity_s_m = c * evaluation_frequency_ghz**d
+
+        # Removing the callback prevents Scene.frequency from re-evaluating an
+        # ITU fit outside its documented range or at a numerically unstable edge.
+        material.frequency_update_callback = None
+        material.relative_permittivity = relative_permittivity
+        material.conductivity = conductivity_s_m
+        material_records.append(
+            {
+                "scene_material_name": str(name),
+                "itu_type": str(itu_type),
+                "requested_frequency_ghz": requested_frequency_ghz,
+                "evaluation_frequency_ghz": evaluation_frequency_ghz,
+                "selected_valid_range_ghz": [lower, upper],
+                "all_valid_ranges_ghz": [
+                    [float(valid_lower), float(valid_upper)]
+                    for valid_lower, valid_upper in intervals
+                ],
+                "clamped": clamped,
+                "relative_permittivity": relative_permittivity,
+                "conductivity_s_m": conductivity_s_m,
+            }
+        )
+    scene.frequency = float(requested_frequency_hz)
+    return {
+        "policy": policy,
+        "requested_frequency_ghz": requested_frequency_ghz,
+        "materials": material_records,
+        "clamped_material_count": sum(record["clamped"] for record in material_records),
+    }
+
+
 def _bbox(scene: Any) -> tuple[np.ndarray, np.ndarray]:
     bounds = scene.mi_scene.bbox()
     lower = _to_numpy(bounds.min).astype(np.float64).reshape(3)
@@ -366,7 +450,11 @@ def generate_sionna_scene(
 
     settings = config["data"]["sionna"]
     scene = load_scene(_scene_constant(record.scene), merge_shapes=False)
-    scene.frequency = float(record.frequency_hz)
+    material_frequency = _configure_itu_material_frequency(
+        scene,
+        float(record.frequency_hz),
+        str(settings.get("material_frequency_policy", "strict")),
+    )
     scene.tx_array = PlanarArray(
         num_rows=1,
         num_cols=1,
@@ -531,6 +619,7 @@ def generate_sionna_scene(
             "synthetic_array_for_path_search": True,
             "element_channel": channel_mode,
         },
+        "material_frequency": material_frequency,
         "system": {
             "tx_power_dbm": float(config["system"]["tx_power_dbm"]),
             "bandwidth_hz": float(config["system"]["bandwidth_hz"]),

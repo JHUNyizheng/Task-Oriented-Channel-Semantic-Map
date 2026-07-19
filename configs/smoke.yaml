@@ -23,6 +23,7 @@ data:
     max_depth: 2
     samples_per_source: 20000
     diffuse_reflection: false
+    material_frequency_policy: clamp_to_itu_range
     channel_mode: explicit_array
     explicit_batch_size: 16
     explicit_validation_points_per_scene: 2
