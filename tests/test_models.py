@@ -18,8 +18,14 @@ def test_gated_hlg_shapes_and_gate_semantics():
     output = model(support, query, local_indices, prior)
     assert output["rss"].shape == (2, 11)
     assert output["regime"].shape == (2, 11, 3)
-    for gate in output["gates"].values():
+    for task, gate in output["gates"].items():
         assert torch.all((gate >= 0) & (gate <= 1))
+        gamma = gate.unsqueeze(-1) if output[task].ndim == 3 else gate
+        torch.testing.assert_close(
+            output[task],
+            gamma * output[f"neural_{task}"]
+            + (1.0 - gamma) * output[f"local_prior_{task}"],
+        )
 
 
 def test_gated_hlg_component_ablations_preserve_interface():

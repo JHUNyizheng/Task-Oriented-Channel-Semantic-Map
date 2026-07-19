@@ -57,6 +57,11 @@ METRIC_FIELDS = (
     "near_angle_mae_deg",
     "near_range_mae_m",
     "rss_rmse_db",
+    "neural_mean_policy_gap",
+    "local_prior_mean_policy_gap",
+    "fusion_gain_vs_best_component",
+    "neural_mean_far_rate_gap",
+    "local_prior_mean_far_rate_gap",
     "near_count",
     "near_policy_gap",
     "cross_count",
@@ -226,6 +231,11 @@ def _point_prediction(
     for task in CLASS_TASKS:
         chunks[task + "_logits"] = []
     gate_chunks: dict[str, list[np.ndarray]] = {task: [] for task in ("rss", *CLASS_TASKS)}
+    component_chunks: dict[str, list[np.ndarray]] = {
+        f"{branch}_{task}{'_db' if task == 'rss' else '_logits'}": []
+        for branch in ("neural", "local_prior")
+        for task in ("rss", *CLASS_TASKS)
+    }
     query_batch = int(config["model"].get("query_batch", 768))
     with torch.inference_mode():
         for start in range(0, len(query), query_batch):
@@ -241,9 +251,25 @@ def _point_prediction(
             if name == "gated_hlg" or name.startswith("gated_hlg_"):
                 for task in gate_chunks:
                     gate_chunks[task].append(output["gates"][task][0].detach().cpu().numpy())
+                for branch in ("neural", "local_prior"):
+                    component_chunks[f"{branch}_rss_db"].append(
+                        output[f"{branch}_rss"][0].detach().cpu().numpy() * 20.0 - 100.0
+                    )
+                    for task in CLASS_TASKS:
+                        component_chunks[f"{branch}_{task}_logits"].append(
+                            output[f"{branch}_{task}"][0].detach().cpu().numpy()
+                        )
     result = {key: np.concatenate(value, axis=0) for key, value in chunks.items()}
     if name == "gated_hlg":
         result["gates"] = {key: np.concatenate(value, axis=0) for key, value in gate_chunks.items()}
+    if name == "gated_hlg" or name.startswith("gated_hlg_"):
+        result.update(
+            {
+                key: np.concatenate(value, axis=0)
+                for key, value in component_chunks.items()
+                if value
+            }
+        )
     return result
 
 
@@ -272,6 +298,36 @@ def _grid_prediction(
     for task in CLASS_TASKS:
         result[task + "_logits"] = output[task][0, query].detach().cpu().numpy()
     return result
+
+
+def _component_rate_gaps(
+    arrays: dict[str, np.ndarray],
+    query: np.ndarray,
+    prediction: dict[str, np.ndarray],
+    prefix: str,
+    near_angle_count: int,
+    full_task: bool,
+) -> tuple[float, float]:
+    far_prediction = np.argmax(prediction[f"{prefix}_far_logits"], axis=1)
+    far_rates = arrays["far_rates"][query]
+    far_selected = np.take_along_axis(far_rates, far_prediction[:, None], axis=1)[:, 0]
+    far_gap = policy_gap(np.max(far_rates, axis=1), far_selected)
+    if not full_task:
+        return float("nan"), float(np.mean(far_gap))
+    regime_prediction = np.argmax(prediction[f"{prefix}_regime_logits"], axis=1)
+    angle_prediction = np.argmax(prediction[f"{prefix}_near_angle_logits"], axis=1)
+    range_prediction = np.argmax(prediction[f"{prefix}_near_range_logits"], axis=1)
+    selected = executed_rate(
+        regime_prediction,
+        far_prediction,
+        angle_prediction,
+        range_prediction,
+        far_rates,
+        arrays["near_rates"][query],
+        near_angle_count,
+    )
+    gap = policy_gap(arrays["oracle_rate_bps_hz"][query], selected)
+    return float(np.mean(gap)), float(np.mean(far_gap))
 
 
 def _prediction_metrics(
@@ -423,6 +479,25 @@ def _prediction_metrics(
         ),
         "rss_rmse_db": rmse_db(arrays["rss_db"][query], prediction["rss_db"]),
     }
+    component_policy: dict[str, float] = {}
+    for prefix in ("neural", "local_prior"):
+        if f"{prefix}_far_logits" not in prediction:
+            continue
+        policy_value, far_value = _component_rate_gaps(
+            arrays,
+            query,
+            prediction,
+            prefix,
+            int(config["model"]["near_angles"]),
+            full_task,
+        )
+        metrics[f"{prefix}_mean_policy_gap"] = policy_value
+        metrics[f"{prefix}_mean_far_rate_gap"] = far_value
+        component_policy[prefix] = policy_value
+    if full_task and len(component_policy) == 2:
+        metrics["fusion_gain_vs_best_component"] = (
+            min(component_policy.values()) - metrics["mean_policy_gap"]
+        )
     for label, region in ((0, "near"), (1, "cross"), (2, "far")):
         selected = truth_regime == label
         metrics[f"{region}_count"] = float(np.sum(selected))
@@ -459,6 +534,32 @@ def _evaluation_conditions(config: dict[str, Any]) -> list[tuple[int, str, int]]
     ]
 
 
+def _archive_incompatible_raw_schema(raw_path: Path) -> Path | None:
+    if not raw_path.exists() or raw_path.stat().st_size == 0:
+        return None
+    with raw_path.open(newline="", encoding="utf-8") as handle:
+        header = next(csv.reader(handle), [])
+    if tuple(header) == tuple(RAW_FIELDS):
+        return None
+    index = 1
+    while True:
+        backup = raw_path.with_name(f"{raw_path.stem}_schema_backup_{index:02d}.csv")
+        if not backup.exists():
+            break
+        index += 1
+    raw_path.replace(backup)
+    write_json_atomic(
+        raw_path.with_name("evaluation_schema_migration.json"),
+        {
+            "reason": "evaluation raw columns changed; rows must be recomputed",
+            "archived_csv": str(backup),
+            "old_header": header,
+            "new_header": list(RAW_FIELDS),
+        },
+    )
+    return backup
+
+
 def evaluate_models(config: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     index = json.loads((run_dir / "scene_index.json").read_text(encoding="utf-8"))
     scene_rows = [row for row in index if row.get("split") != "train"]
@@ -467,6 +568,7 @@ def evaluate_models(config: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     conditions = _evaluation_conditions(config)
     raw_path = run_dir / "metrics" / "evaluation_raw.csv"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
+    _archive_incompatible_raw_schema(raw_path)
     seen: set[tuple[str, str, int, int, int, str]] = set()
     if raw_path.exists() and config["run"].get("resume", True):
         with raw_path.open(newline="", encoding="utf-8") as existing_handle:
@@ -605,6 +707,11 @@ def summarize_evaluation(rows: list[dict[str, Any]], config: dict[str, Any]) -> 
         "cross_policy_gap",
         "far_policy_gap",
         "rss_rmse_db",
+        "neural_mean_policy_gap",
+        "local_prior_mean_policy_gap",
+        "fusion_gain_vs_best_component",
+        "neural_mean_far_rate_gap",
+        "local_prior_mean_far_rate_gap",
     )
     group_keys = ("model", "source", "split", "support_count", "sampling_mode")
     grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}

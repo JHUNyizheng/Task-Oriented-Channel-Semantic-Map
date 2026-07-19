@@ -139,6 +139,8 @@ class GatedHLG(torch.nn.Module):
                 result[name] = prediction
             else:
                 result[name] = gamma * prediction + (1.0 - gamma) * prior
+            result[f"neural_{name}"] = prediction
+            result[f"local_prior_{name}"] = prior
             gate_values[name] = gamma.squeeze(-1)
         result["gates"] = gate_values
         return result

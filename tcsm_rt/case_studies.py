@@ -114,7 +114,7 @@ def _prediction_maps(
     range_index[support] = arrays["best_near_range"][support]
     rss[support] = arrays["rss_db"][support]
     gap[support] = 0.0
-    return {
+    result = {
         "rss_db": rss,
         "regime": regime,
         "far": far,
@@ -123,6 +123,13 @@ def _prediction_maps(
         "focus": range_index.astype(np.int32) * near_angle_count + angle.astype(np.int32),
         "policy_gap": gap,
     }
+    gates = prediction.get("gates")
+    if isinstance(gates, dict):
+        for task, values in gates.items():
+            gate_map = np.full(count, np.nan, dtype=np.float32)
+            gate_map[query] = np.asarray(values, dtype=np.float32)
+            result[f"gate_{task}"] = gate_map
+    return result
 
 
 def _reshape(values: np.ndarray, side: int, valid: np.ndarray) -> np.ma.MaskedArray:
@@ -147,6 +154,8 @@ def _overlay_bs(
     axis: plt.Axes,
     transmitter_xyz_m: np.ndarray,
     extent: tuple[float, float, float, float],
+    *,
+    show_label: bool = True,
 ) -> None:
     x_min, x_max, y_min, y_max = extent
     tx_x, tx_y = float(transmitter_xyz_m[0]), float(transmitter_xyz_m[1])
@@ -164,15 +173,16 @@ def _overlay_bs(
         zorder=5,
         clip_on=True,
     )
-    axis.annotate(
-        "BS" if inside else "BS direction",
-        (marker_x, marker_y),
-        xytext=(4, 4),
-        textcoords="offset points",
-        fontsize=7,
-        color="#8E1B1B",
-        weight="bold",
-    )
+    if show_label:
+        axis.annotate(
+            "BS" if inside else "BS direction",
+            (marker_x, marker_y),
+            xytext=(4, 4),
+            textcoords="offset points",
+            fontsize=7,
+            color="#8E1B1B",
+            weight="bold",
+        )
 
 
 def _draw_case(
@@ -313,6 +323,60 @@ def _draw_case(
     plt.close(fig)
 
 
+def _draw_gate_case(
+    output: Path,
+    arrays: dict[str, np.ndarray],
+    metadata: dict[str, Any],
+    support_route: np.ndarray,
+    ours: dict[str, np.ndarray],
+    case: dict[str, Any],
+) -> None:
+    count = len(arrays["query_xyz_m"])
+    side = int(round(np.sqrt(count)))
+    valid = np.asarray(arrays.get("valid_query_mask", np.ones(count, dtype=bool)), dtype=bool)
+    extent = _grid_extent(arrays["query_xyz_m"])
+    transmitter = np.asarray(metadata["transmitter_xyz_m"], dtype=np.float64)
+    tasks = ("rss", "regime", "far", "near_angle", "near_range")
+    missing = [task for task in tasks if f"gate_{task}" not in ours]
+    if missing:
+        raise RuntimeError(f"Gated-HLG case prediction lacks task gates: {missing}")
+    titles = ("RSS", "Regime", "Far beam", "Near angle", "Near range")
+    fig, axes = plt.subplots(1, len(tasks), figsize=(13.4, 3.0), constrained_layout=True)
+    route_xy = arrays["query_xyz_m"][support_route, :2]
+    image = None
+    for axis, task, title in zip(axes, tasks, titles, strict=True):
+        image = axis.imshow(
+            _reshape(ours[f"gate_{task}"], side, valid),
+            origin="lower",
+            cmap="viridis",
+            vmin=0.0,
+            vmax=1.0,
+            extent=extent,
+            aspect="equal",
+        )
+        axis.scatter(
+            route_xy[:, 0],
+            route_xy[:, 1],
+            s=7,
+            facecolors="none",
+            edgecolors="white",
+            linewidths=0.35,
+        )
+        _overlay_bs(axis, transmitter, extent, show_label=False)
+        axis.set_title(title)
+        axis.set_xticks([])
+        axis.set_yticks([])
+    if image is not None:
+        fig.colorbar(image, ax=axes, fraction=0.022, pad=0.015, label="gamma (0=prior, 1=neural)")
+    fig.suptitle(
+        f"Task-dependent neural weight gamma: {case['case_name']} ({case['split']})",
+        fontsize=11,
+    )
+    for suffix in ("pdf", "svg", "png"):
+        fig.savefig(output.with_suffix(f".{suffix}"), dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
 def generate_case_studies(config: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     settings = config.get("case_gallery", {})
     raw_path = run_dir / "metrics" / "evaluation_raw.csv"
@@ -412,6 +476,8 @@ def generate_case_studies(config: dict[str, Any], run_dir: Path) -> dict[str, An
             case,
             int(config["model"]["near_angles"]),
         )
+        gate_stem = output_dir / f"{case['case_name']}_gates"
+        _draw_gate_case(gate_stem, arrays, metadata, support_route, ours_maps, case)
         manifest_cases.append(
             {
                 **case,
@@ -425,6 +491,9 @@ def generate_case_studies(config: dict[str, Any], run_dir: Path) -> dict[str, An
                 "pdf": str(stem.with_suffix(".pdf")),
                 "svg": str(stem.with_suffix(".svg")),
                 "png": str(stem.with_suffix(".png")),
+                "gate_pdf": str(gate_stem.with_suffix(".pdf")),
+                "gate_svg": str(gate_stem.with_suffix(".svg")),
+                "gate_png": str(gate_stem.with_suffix(".png")),
             }
         )
     manifest = {
