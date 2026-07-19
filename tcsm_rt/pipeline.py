@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .audit import audit_run
+from .audit import audit_run, audit_training_label_coverage
 from .case_studies import generate_case_studies
 from .data.common import sionna_configuration_manifest
 from .data.deepmimo_adapter import generate_deepmimo_scenario
@@ -94,6 +94,9 @@ def prepare_deepmimo(config: dict[str, Any], limit_scenarios: int | None = None)
 
 def train_point_models(config: dict[str, Any], smoke: bool = False) -> list[dict[str, Any]]:
     root = _output_root(config)
+    coverage = audit_training_label_coverage(root, config)
+    if not coverage["passed"] and not smoke:
+        raise RuntimeError(f"training label coverage failed: {coverage['errors']}")
     rows = _load_index(root)
     train_paths = [Path(row["cache"]) for row in rows if row.get("split") == "train"]
     if not train_paths:
@@ -122,6 +125,9 @@ def train_point_models(config: dict[str, Any], smoke: bool = False) -> list[dict
 
 def train_grid_models(config: dict[str, Any], smoke: bool = False) -> list[dict[str, Any]]:
     root = _output_root(config)
+    coverage = audit_training_label_coverage(root, config)
+    if not coverage["passed"] and not smoke:
+        raise RuntimeError(f"training label coverage failed: {coverage['errors']}")
     rows = _load_index(root)
     train_paths = [Path(row["cache"]) for row in rows if row.get("split") == "train"]
     if not train_paths:

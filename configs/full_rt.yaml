@@ -106,3 +106,5 @@ statistics:
   confidence: 0.95
   paired_test: wilcoxon
   multiple_testing: holm
+quality_gates:
+  min_regime_fraction: 0.01

@@ -11,6 +11,90 @@ from .provenance import sha256_file, write_json_atomic
 from .schema import load_scene
 
 
+def audit_training_label_coverage(
+    run_dir: str | Path,
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    root = Path(run_dir)
+    rows = json.loads((root / "scene_index.json").read_text(encoding="utf-8"))
+    train_rows = [row for row in rows if row.get("split") == "train"]
+    regime_counts = np.zeros(3, dtype=np.int64)
+    far_counts = np.zeros(int(config["model"]["far_beams"]), dtype=np.int64)
+    angle_counts = np.zeros(int(config["model"]["near_angles"]), dtype=np.int64)
+    range_counts = np.zeros(int(config["model"]["near_ranges"]), dtype=np.int64)
+    rss_values: list[np.ndarray] = []
+    rate_values: list[np.ndarray] = []
+    valid_points = 0
+    errors: list[str] = []
+    for row in train_rows:
+        arrays = load_scene(row["cache"])
+        valid = np.asarray(
+            arrays.get("valid_query_mask", np.ones(len(arrays["query_xyz_m"]), dtype=bool)),
+            dtype=bool,
+        )
+        valid_points += int(np.sum(valid))
+        regime_counts += np.bincount(arrays["regime"][valid], minlength=3)
+        far_counts += np.bincount(
+            arrays["best_far_idx"][valid],
+            minlength=len(far_counts),
+        )
+        angle_counts += np.bincount(
+            arrays["best_near_angle"][valid],
+            minlength=len(angle_counts),
+        )
+        range_counts += np.bincount(
+            arrays["best_near_range"][valid],
+            minlength=len(range_counts),
+        )
+        rss_values.append(np.asarray(arrays["rss_db"][valid], dtype=np.float64))
+        rate_values.append(np.asarray(arrays["oracle_rate_bps_hz"][valid], dtype=np.float64))
+        if arrays["environment"].shape[1] != 10:
+            errors.append(f"{Path(row['cache']).stem}: environment feature count is not 10")
+        if not np.all(arrays["environment"][valid, 9] > 0.5):
+            errors.append(f"{Path(row['cache']).stem}: Sionna environment modality is unavailable")
+    expected_scenes = int(config["data"]["sionna"]["configs_per_split"]["train"])
+    if len(train_rows) != expected_scenes:
+        errors.append(f"training scene count is {len(train_rows)}, expected {expected_scenes}")
+    if valid_points == 0:
+        errors.append("training split contains no valid query points")
+        fractions = np.zeros(3, dtype=np.float64)
+    else:
+        fractions = regime_counts / valid_points
+    minimum_fraction = float(config.get("quality_gates", {}).get("min_regime_fraction", 0.01))
+    for label, name in enumerate(("near", "cross", "far")):
+        if fractions[label] < minimum_fraction:
+            errors.append(
+                f"aggregate {name} fraction is {fractions[label]:.6f}, "
+                f"below {minimum_fraction:.6f}"
+            )
+    rss = np.concatenate(rss_values) if rss_values else np.array([], dtype=np.float64)
+    rate = np.concatenate(rate_values) if rate_values else np.array([], dtype=np.float64)
+    report = {
+        "passed": not errors,
+        "training_scene_count": len(train_rows),
+        "valid_training_points": valid_points,
+        "minimum_regime_fraction": minimum_fraction,
+        "regime_counts": {
+            name: int(regime_counts[label])
+            for label, name in enumerate(("near", "cross", "far"))
+        },
+        "regime_fractions": {
+            name: float(fractions[label])
+            for label, name in enumerate(("near", "cross", "far"))
+        },
+        "far_beam_classes_present": int(np.sum(far_counts > 0)),
+        "near_angle_classes_present": int(np.sum(angle_counts > 0)),
+        "near_range_classes_present": int(np.sum(range_counts > 0)),
+        "rss_db_quantiles": np.quantile(rss, [0.05, 0.5, 0.95]).tolist() if rss.size else [],
+        "oracle_rate_quantiles_bps_hz": (
+            np.quantile(rate, [0.05, 0.5, 0.95]).tolist() if rate.size else []
+        ),
+        "errors": errors,
+    }
+    write_json_atomic(root / "training_label_coverage.json", report)
+    return report
+
+
 def audit_run(run_dir: str | Path) -> dict[str, Any]:
     root = Path(run_dir)
     index_path = root / "scene_index.json"
