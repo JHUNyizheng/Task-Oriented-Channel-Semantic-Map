@@ -112,6 +112,27 @@ def test_gated_local_prior_matches_standalone_idw_decision() -> None:
     )
 
 
+def test_unavailable_support_labels_do_not_enter_local_votes() -> None:
+    arrays = _external_scene()
+    arrays["best_far_idx"] = arrays["best_far_idx"].copy()
+    arrays["best_far_idx"][[0, 2]] = [1, 7]
+    arrays["task_availability"] = arrays["task_availability"].copy()
+    arrays["task_availability"][0, 2] = 0.0
+    arrays["task_availability"][2, 2] = 1.0
+    support = np.array([0, 2])
+    query = np.array([1])
+    model_config = {
+        "far_beams": 17,
+        "near_angles": 17,
+        "near_ranges": 5,
+        "local_neighbors": 2,
+    }
+    standalone = _baseline_prediction(arrays, support, query, {"model": model_config}, "idw")
+    batch = build_point_batch(arrays, support, query, model_config, torch.device("cpu"))
+    assert int(np.argmax(standalone["far_logits"][0])) == 7
+    assert int(torch.argmax(batch.local_prior["far"][0, 0])) == 7
+
+
 def test_external_metrics_do_not_report_near_field_or_policy_results():
     arrays = _external_scene()
     query = np.arange(9)

@@ -86,35 +86,51 @@ def build_point_batch(
     weights = 1.0 / np.maximum(distances, 1e-3) ** 2
     weights /= np.sum(weights, axis=1, keepdims=True)
 
-    def prior_distribution(values: np.ndarray, count: int) -> np.ndarray:
+    def available_weights(column: int) -> tuple[np.ndarray, np.ndarray]:
+        local_available = support_availability[local_indices, column]
+        selected_weights = weights * local_available
+        denominator = np.sum(selected_weights, axis=1, keepdims=True)
+        normalized = np.zeros_like(selected_weights, dtype=np.float64)
+        np.divide(selected_weights, denominator, out=normalized, where=denominator > 0.0)
+        return normalized, denominator[:, 0] > 0.0
+
+    def prior_distribution(values: np.ndarray, count: int, column: int) -> np.ndarray:
         neighbours = values[support_indices][local_indices]
         distribution = np.zeros((len(query_indices), count), dtype=np.float32)
-        for column in range(neighbour_count):
-            distribution[np.arange(len(query_indices)), neighbours[:, column]] += weights[:, column]
+        task_weights, task_available = available_weights(column)
+        for neighbour_column in range(neighbour_count):
+            distribution[
+                np.arange(len(query_indices)),
+                neighbours[:, neighbour_column],
+            ] += task_weights[:, neighbour_column]
         pseudocount = float(model_config.get("prior_pseudocount", 0.0))
         if pseudocount < 0.0:
             raise ValueError("model.prior_pseudocount must be non-negative")
         if pseudocount:
-            distribution += pseudocount / count
-            distribution /= np.sum(distribution, axis=1, keepdims=True)
-        return np.log(np.maximum(distribution, 1e-6)).astype(np.float32)
+            distribution[task_available] += pseudocount / count
+            distribution[task_available] /= np.sum(
+                distribution[task_available],
+                axis=1,
+                keepdims=True,
+            )
+        logits = np.zeros_like(distribution, dtype=np.float32)
+        logits[task_available] = np.log(
+            np.maximum(distribution[task_available], 1e-6)
+        ).astype(np.float32)
+        return logits
 
-    local_availability = support_availability[local_indices]
+    rss_weights, _ = available_weights(0)
     prior = {
         "rss": np.sum(
             rss_normalized[support_indices][local_indices]
-            * weights
-            * local_availability[:, :, 0],
+            * rss_weights,
             axis=1,
         ).astype(np.float32),
-        "regime": prior_distribution(arrays["regime"], 3),
-        "far": prior_distribution(arrays["best_far_idx"], far_count),
-        "near_angle": prior_distribution(arrays["best_near_angle"], angle_count),
-        "near_range": prior_distribution(arrays["best_near_range"], range_count),
+        "regime": prior_distribution(arrays["regime"], 3, 1),
+        "far": prior_distribution(arrays["best_far_idx"], far_count, 2),
+        "near_angle": prior_distribution(arrays["best_near_angle"], angle_count, 3),
+        "near_range": prior_distribution(arrays["best_near_range"], range_count, 4),
     }
-    for task, column in (("regime", 1), ("far", 2), ("near_angle", 3), ("near_range", 4)):
-        available = np.max(local_availability[:, :, column], axis=1, keepdims=True)
-        prior[task] *= available
     targets = {
         "rss": rss_normalized[query_indices],
         "regime": arrays["regime"][query_indices].astype(np.int64),

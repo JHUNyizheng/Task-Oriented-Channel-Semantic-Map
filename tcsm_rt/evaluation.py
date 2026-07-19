@@ -163,21 +163,38 @@ def _baseline_prediction(
     else:
         weights = 1.0 / np.maximum(distances, 1e-3) ** 2
     weights /= np.sum(weights, axis=1, keepdims=True)
+    availability = arrays.get(
+        "task_availability",
+        np.ones((len(points), 5), dtype=np.float32),
+    )
+
+    def available_weights(column: int) -> tuple[np.ndarray, np.ndarray]:
+        local_available = availability[support][local, column]
+        selected_weights = weights * local_available
+        denominator = np.sum(selected_weights, axis=1, keepdims=True)
+        normalized = np.zeros_like(selected_weights, dtype=np.float64)
+        np.divide(selected_weights, denominator, out=normalized, where=denominator > 0.0)
+        return normalized, denominator[:, 0] > 0.0
+
+    rss_weights, _ = available_weights(0)
     result: dict[str, np.ndarray] = {
-        "rss_db": np.sum(arrays["rss_db"][support][local] * weights, axis=1),
+        "rss_db": np.sum(arrays["rss_db"][support][local] * rss_weights, axis=1),
     }
     task_specs = {
-        "regime": ("regime", 3),
-        "far": ("best_far_idx", int(config["model"]["far_beams"])),
-        "near_angle": ("best_near_angle", int(config["model"]["near_angles"])),
-        "near_range": ("best_near_range", int(config["model"]["near_ranges"])),
+        "regime": ("regime", 3, 1),
+        "far": ("best_far_idx", int(config["model"]["far_beams"]), 2),
+        "near_angle": ("best_near_angle", int(config["model"]["near_angles"]), 3),
+        "near_range": ("best_near_range", int(config["model"]["near_ranges"]), 4),
     }
-    for output_name, (array_name, count) in task_specs.items():
+    for output_name, (array_name, count, availability_column) in task_specs.items():
         distribution = np.zeros((len(query), count), dtype=np.float64)
         neighbour_values = arrays[array_name][support][local]
+        task_weights, task_available = available_weights(availability_column)
         for column in range(neighbour_count):
-            distribution[np.arange(len(query)), neighbour_values[:, column]] += weights[:, column]
-        result[output_name + "_logits"] = np.log(np.maximum(distribution, 1e-9))
+            distribution[np.arange(len(query)), neighbour_values[:, column]] += task_weights[:, column]
+        logits = np.zeros_like(distribution)
+        logits[task_available] = np.log(np.maximum(distribution[task_available], 1e-9))
+        result[output_name + "_logits"] = logits
     return result
 
 
