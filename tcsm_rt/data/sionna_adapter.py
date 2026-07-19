@@ -114,6 +114,7 @@ def _configure_itu_material_frequency(
     scene.frequency = float(requested_frequency_hz)
     return {
         "policy": policy,
+        "application_stage": "before_scene_frequency_and_path_tracing",
         "requested_frequency_ghz": requested_frequency_ghz,
         "materials": material_records,
         "clamped_material_count": sum(record["clamped"] for record in material_records),
