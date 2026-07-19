@@ -8,7 +8,12 @@ from pathlib import Path
 from tcsm_rt.provenance import sha256_file, write_json_atomic
 
 
-INCLUDED_DIRECTORIES = ("checkpoints", "deepmimo_crosscity_checkpoints", "metrics")
+INCLUDED_DIRECTORIES = (
+    "checkpoints",
+    "deepmimo_crosscity_checkpoints",
+    "deepmimo_crosscity_checkpoints_v2",
+    "metrics",
+)
 INCLUDED_FILES = (
     "scene_index.json",
     "environment_manifest.json",
