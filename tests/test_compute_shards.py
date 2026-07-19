@@ -5,11 +5,16 @@ import tarfile
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 from scripts.merge_compute_artifacts import merge_compute_artifacts
 from scripts.package_sionna_training_shard import package_training_shard
 from scripts.stage_training_shard import stage_training_shard
+from tcsm_rt.data.common import sionna_configuration_manifest
 from tcsm_rt.provenance import sha256_file
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -98,3 +103,13 @@ def test_delegated_checkpoint_merge_requires_complete_history(tmp_path: Path) ->
     assert merged_checkpoint.read_bytes() == b"checkpoint"
     summary = json.loads((destination / "training_summary.json").read_text())
     assert Path(summary[0]["checkpoint"]) == merged_checkpoint.resolve()
+
+
+def test_mac_delegated_training_manifest_matches_zhengyi_train_split() -> None:
+    zhengyi = yaml.safe_load((ROOT / "configs/full_rt_zhengyi.yaml").read_text())
+    mac = yaml.safe_load((ROOT / "configs/full_rt_macstudio.yaml").read_text())
+    zhengyi_train = [
+        record for record in sionna_configuration_manifest(zhengyi) if record.split == "train"
+    ]
+    mac_train = [record for record in sionna_configuration_manifest(mac) if record.split == "train"]
+    assert mac_train == zhengyi_train
