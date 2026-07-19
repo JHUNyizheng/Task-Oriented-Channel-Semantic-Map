@@ -36,6 +36,10 @@ for record in 0 48; do
       | tee "logs/convergence_record_${record}.json"
   fi
 done
+"$PYTHON" scripts/recompute_sionna_convergence.py \
+  outputs/zhengyi_sionna/convergence/record_0 \
+  outputs/zhengyi_sionna/convergence/record_48 \
+  | tee logs/recompute_convergence.json
 "$PYTHON" scripts/select_ray_budget.py \
   outputs/zhengyi_sionna/convergence/record_0/convergence.csv \
   outputs/zhengyi_sionna/convergence/record_48/convergence.csv \
@@ -58,5 +62,7 @@ TCSM_SAMPLES_PER_SOURCE="$($PYTHON -c 'import json; print(json.load(open("output
   | tee logs/robustness_zhengyi.json
 "$PYTHON" -m tcsm_rt.cli profile --config configs/full_rt_zhengyi.yaml \
   | tee logs/deployment_profile_zhengyi.json
+"$PYTHON" -m tcsm_rt.cli cases --config configs/full_rt_zhengyi.yaml \
+  | tee logs/case_gallery_zhengyi.json
 "$PYTHON" -m tcsm_rt.cli audit --run-dir outputs/zhengyi_sionna \
   | tee logs/audit_zhengyi.json

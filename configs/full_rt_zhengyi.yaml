@@ -83,6 +83,12 @@ deployment:
   devices: [auto, cpu]
   warmup: 5
   repeats: 30
+case_gallery:
+  baseline_candidates: [storm, set_transformer, radiounet]
+  train_seed: 11
+  eval_seed: 101
+  support_count: 24
+  sampling_mode: trajectory
 statistics:
   bootstrap_samples: 5000
   confidence: 0.95

@@ -8,6 +8,7 @@ from importlib import metadata
 from pathlib import Path
 
 from .audit import audit_run
+from .case_studies import generate_case_studies
 from .config import load_config
 from .evaluation import evaluate_models
 from .diagnostics import profile_models, run_robustness, run_threshold_sensitivity
@@ -38,6 +39,7 @@ def _parser() -> argparse.ArgumentParser:
         "threshold-sensitivity",
         "robustness",
         "profile",
+        "cases",
         "run",
         "audit",
     ):
@@ -111,6 +113,8 @@ def main() -> None:
             result = run_robustness(config, _output_root(config))
         elif args.command == "profile":
             result = profile_models(config, _output_root(config))
+        elif args.command == "cases":
+            result = generate_case_studies(config, _output_root(config))
         elif args.command == "run":
             if args.resume:
                 config["run"]["resume"] = True

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .audit import audit_run
+from .case_studies import generate_case_studies
 from .data.common import sionna_configuration_manifest
 from .data.deepmimo_adapter import generate_deepmimo_scenario
 from .data.sionna_adapter import generate_sionna_scene
@@ -163,6 +164,10 @@ def run_full(config: dict[str, Any]) -> dict[str, Any]:
         "status": "skipped",
         "reason": "deployment section is absent",
     }
+    cases = generate_case_studies(config, _output_root(config)) if config.get("case_gallery") else {
+        "status": "skipped",
+        "reason": "case_gallery section is absent",
+    }
     report = audit_run(_output_root(config))
     return {
         "point_training": point_training,
@@ -171,5 +176,6 @@ def run_full(config: dict[str, Any]) -> dict[str, Any]:
         "threshold_sensitivity": threshold_sensitivity,
         "robustness": robustness,
         "deployment": deployment,
+        "cases": cases,
         "audit": report,
     }

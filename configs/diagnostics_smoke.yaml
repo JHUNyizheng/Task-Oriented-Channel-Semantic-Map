@@ -70,6 +70,12 @@ deployment:
   devices: [cpu]
   warmup: 1
   repeats: 3
+case_gallery:
+  baseline_candidates: [set_transformer]
+  train_seed: 11
+  eval_seed: 101
+  support_count: 3
+  sampling_mode: trajectory
 statistics:
   bootstrap_samples: 100
   confidence: 0.95

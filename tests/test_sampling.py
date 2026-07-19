@@ -1,6 +1,11 @@
 import numpy as np
 
-from tcsm_rt.sampling import sample_indices, sample_scene_indices
+from tcsm_rt.sampling import (
+    sample_indices,
+    sample_scene_indices,
+    trajectory_indices,
+    trajectory_indices_ordered,
+)
 
 
 def test_sampling_modes_are_unique_and_deterministic():
@@ -22,3 +27,12 @@ def test_scene_sampling_excludes_invalid_building_cells():
     for mode in ("scatter", "trajectory", "coverage_trajectory"):
         selected = sample_scene_indices(arrays, 12, mode, 17)
         assert np.all(valid[selected])
+
+
+def test_ordered_trajectory_preserves_the_evaluated_support_set():
+    x, y = np.meshgrid(np.arange(9), np.arange(9), indexing="xy")
+    points = np.column_stack([x.ravel(), y.ravel(), np.zeros(x.size)])
+    ordered = trajectory_indices_ordered(points, 17, 42)
+    evaluated = trajectory_indices(points, 17, 42)
+    np.testing.assert_array_equal(np.sort(ordered), evaluated)
+    assert len(np.unique(ordered)) == len(ordered)

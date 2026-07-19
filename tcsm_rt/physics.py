@@ -204,7 +204,9 @@ def channel_correlation(reference: np.ndarray, estimate: np.ndarray) -> np.ndarr
     estimate = np.asarray(estimate, dtype=np.complex128)
     numerator = np.abs(np.sum(np.conj(reference) * estimate, axis=-1))
     denominator = np.linalg.norm(reference, axis=-1) * np.linalg.norm(estimate, axis=-1)
-    return (numerator / np.maximum(denominator, 1e-12)).astype(np.float64)
+    result = np.zeros_like(denominator, dtype=np.float64)
+    np.divide(numerator, denominator, out=result, where=denominator > 0.0)
+    return np.clip(result, 0.0, 1.0)
 
 
 def empirical_ddri(channel_groups: np.ndarray) -> np.ndarray:

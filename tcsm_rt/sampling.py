@@ -9,14 +9,21 @@ def scatter_indices(points: np.ndarray, count: int, seed: int) -> np.ndarray:
     return np.sort(rng.choice(len(points), size=count, replace=False)).astype(np.int64)
 
 
-def _nearest_unique(points: np.ndarray, targets: np.ndarray, count: int) -> np.ndarray:
+def _nearest_unique(
+    points: np.ndarray,
+    targets: np.ndarray,
+    count: int,
+    *,
+    sort_indices: bool = True,
+) -> np.ndarray:
     tree = cKDTree(points)
     _, indices = tree.query(targets, k=1)
     ordered = list(dict.fromkeys(np.asarray(indices, dtype=np.int64).tolist()))
     if len(ordered) < count:
         missing = np.setdiff1d(np.arange(len(points)), np.asarray(ordered), assume_unique=False)
         ordered.extend(missing[: count - len(ordered)].tolist())
-    return np.sort(np.asarray(ordered[:count], dtype=np.int64))
+    result = np.asarray(ordered[:count], dtype=np.int64)
+    return np.sort(result) if sort_indices else result
 
 
 def trajectory_indices(points: np.ndarray, count: int, seed: int) -> np.ndarray:
@@ -31,7 +38,23 @@ def trajectory_indices(points: np.ndarray, count: int, seed: int) -> np.ndarray:
     return _nearest_unique(points[:, :2], targets, count)
 
 
+def trajectory_indices_ordered(points: np.ndarray, count: int, seed: int) -> np.ndarray:
+    points = np.asarray(points, dtype=np.float64)
+    rng = np.random.default_rng(seed)
+    lower = points[:, :2].min(axis=0)
+    upper = points[:, :2].max(axis=0)
+    start = rng.uniform(lower, upper)
+    end = rng.uniform(lower, upper)
+    steps = np.linspace(0.0, 1.0, max(count * 4, 32))[:, None]
+    targets = start[None, :] * (1.0 - steps) + end[None, :] * steps
+    return _nearest_unique(points[:, :2], targets, count, sort_indices=False)
+
+
 def coverage_trajectory_indices(points: np.ndarray, count: int, seed: int) -> np.ndarray:
+    return np.sort(coverage_trajectory_indices_ordered(points, count, seed))
+
+
+def coverage_trajectory_indices_ordered(points: np.ndarray, count: int, seed: int) -> np.ndarray:
     points = np.asarray(points, dtype=np.float64)
     rng = np.random.default_rng(seed)
     lower = points[:, :2].min(axis=0)
@@ -47,7 +70,7 @@ def coverage_trajectory_indices(points: np.ndarray, count: int, seed: int) -> np
         targets.append(np.column_stack([x_values, np.full_like(x_values, y_value)]))
     path = np.concatenate(targets, axis=0)
     path += rng.normal(scale=1e-6, size=path.shape)
-    return _nearest_unique(points[:, :2], path, count)
+    return _nearest_unique(points[:, :2], path, count, sort_indices=False)
 
 
 def sample_indices(points: np.ndarray, count: int, mode: str, seed: int) -> np.ndarray:
@@ -82,4 +105,22 @@ def sample_scene_indices(
     valid = valid_query_indices(arrays)
     local_count = min(int(count), len(valid) - 1)
     local = sample_indices(arrays["query_xyz_m"][valid], local_count, mode, seed)
+    return valid[local]
+
+
+def sample_scene_indices_ordered(
+    arrays: dict[str, np.ndarray],
+    count: int,
+    mode: str,
+    seed: int,
+) -> np.ndarray:
+    valid = valid_query_indices(arrays)
+    local_count = min(int(count), len(valid) - 1)
+    points = arrays["query_xyz_m"][valid]
+    if mode == "trajectory":
+        local = trajectory_indices_ordered(points, local_count, seed)
+    elif mode == "coverage_trajectory":
+        local = coverage_trajectory_indices_ordered(points, local_count, seed)
+    else:
+        local = sample_indices(points, local_count, mode, seed)
     return valid[local]

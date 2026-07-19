@@ -12,6 +12,16 @@ from tcsm_rt.physics import (
 )
 
 
+def test_channel_correlation_is_scale_invariant_for_weak_channels():
+    reference = np.array(
+        [[1.0 + 1.0j, 2.0 - 0.5j], [0.5 - 0.2j, -1.0j]],
+        dtype=np.complex128,
+    ) * 1e-9
+    np.testing.assert_allclose(channel_correlation(reference, reference), 1.0, atol=1e-12)
+    scaled = reference * (3.0 * np.exp(1j * 0.7))
+    np.testing.assert_allclose(channel_correlation(reference, scaled), 1.0, atol=1e-12)
+
+
 def test_los_reconstruction_matches_direct_geometry():
     frequency = 28e9
     wavelength = 299_792_458.0 / frequency
