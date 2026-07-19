@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
+import tarfile
 from pathlib import Path
 
 import numpy as np
+import pytest
 import yaml
 
 from scripts.merge_compute_artifacts import merge_compute_artifacts
@@ -64,6 +67,28 @@ def test_verified_training_shard_round_trip(tmp_path: Path) -> None:
     assert staged["source_archive_sha256"] == sha256_file(archive)
     staged_cache = next((destination / "scenes").glob("*.npz"))
     assert sha256_file(staged_cache) == sha256_file(cache)
+
+
+def test_training_shard_rejects_path_traversal(tmp_path: Path) -> None:
+    archive = tmp_path / "unsafe.tar.gz"
+    with tarfile.open(archive, "w:gz") as handle:
+        member = tarfile.TarInfo("../escape.txt")
+        member.size = 1
+        handle.addfile(member, io.BytesIO(b"x"))
+    with pytest.raises(ValueError, match="unsafe path"):
+        stage_training_input(archive, tmp_path / "destination", expected_count=1)
+    assert not (tmp_path / "escape.txt").exists()
+
+
+def test_training_shard_rejects_links(tmp_path: Path) -> None:
+    archive = tmp_path / "link.tar.gz"
+    with tarfile.open(archive, "w:gz") as handle:
+        member = tarfile.TarInfo("linked-cache")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "/tmp/external-cache"
+        handle.addfile(member)
+    with pytest.raises(ValueError, match="links are not allowed"):
+        stage_training_input(archive, tmp_path / "destination", expected_count=1)
 
 
 def test_delegated_checkpoint_merge_requires_complete_history(tmp_path: Path) -> None:
