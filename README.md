@@ -50,6 +50,8 @@ loss history, and accumulated training time. A final checkpoint is treated as co
 its companion history reaches step 8000. After the Mac worker finishes, the compute-artifact
 merger requires all 12 model configurations for seeds 53 and 71 and verifies the SHA-256 digest of
 48 checkpoint/history files before the five-seed evaluation can start on ZHENGYI.
+The Mac worker skips the four Sionna-backend tests only when its host lacks a usable LLVM/CUDA RT
+backend; ZHENGYI and GitHub CI continue to run the complete test set.
 
 On a CPU ray-tracing backend, `scripts/run_zhengyi_sharded_full.sh` partitions the 96 Sionna
 records into three disjoint intervals. Each worker writes an independent output directory; the

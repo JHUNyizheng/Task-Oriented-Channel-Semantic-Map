@@ -39,7 +39,14 @@ fi
 system_profiler SPHardwareDataType > logs/hardware_macstudio.txt
 .venv/bin/python -m tcsm_rt.cli doctor --config configs/full_rt_macstudio.yaml \
   | tee logs/doctor_macstudio.json
-.venv/bin/python -m pytest | tee logs/tests_macstudio.txt
+if .venv/bin/python -c 'import sionna.rt' >/dev/null 2>&1; then
+  .venv/bin/python -m pytest | tee logs/tests_macstudio.txt
+else
+  printf '%s\n' 'Sionna RT backend unavailable; RT-only tests remain assigned to ZHENGYI/CI.' \
+    | tee logs/sionna_rt_tests_skipped_macstudio.txt
+  .venv/bin/python -m pytest --ignore=tests/test_sionna_backend.py \
+    | tee logs/tests_macstudio.txt
+fi
 .venv/bin/python -m tcsm_rt.cli prepare-deepmimo --config configs/full_rt_macstudio.yaml \
   | tee logs/prepare_deepmimo_macstudio.json
 .venv/bin/python -m tcsm_rt.cli deepmimo-audit --config configs/full_rt_macstudio.yaml \
