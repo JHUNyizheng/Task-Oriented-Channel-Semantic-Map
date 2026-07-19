@@ -5,6 +5,7 @@ run:
   resume: true
   device: auto
   train_steps: 8000
+  training_checkpoint_interval: 400
   train_seeds: [11, 23, 37, 53, 71]
   eval_seeds: [101, 211, 307, 401, 503]
 data:

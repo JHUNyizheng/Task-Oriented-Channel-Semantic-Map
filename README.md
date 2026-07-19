@@ -44,6 +44,13 @@ digest and excludes all Sionna evaluation splits from the Mac worker. The two wo
 produce disjoint training seeds. `scripts/merge_result_shard.py` verifies declared hashes and
 rewrites remote absolute paths before a shard enters the combined evidence directory.
 
+Point and grid training persist an atomic recovery state every 400 optimization steps. The state
+contains model and optimizer parameters, NumPy/Python/PyTorch random states, the completed step,
+loss history, and accumulated training time. A final checkpoint is treated as complete only when
+its companion history reaches step 8000. After the Mac worker finishes, the compute-artifact
+merger requires all 12 model configurations for seeds 53 and 71 and verifies the SHA-256 digest of
+48 checkpoint/history files before the five-seed evaluation can start on ZHENGYI.
+
 On a CPU ray-tracing backend, `scripts/run_zhengyi_sharded_full.sh` partitions the 96 Sionna
 records into three disjoint intervals. Each worker writes an independent output directory; the
 coordinator waits for all workers, verifies hashes during merge, requires exactly 96 caches, and

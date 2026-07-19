@@ -14,6 +14,7 @@ from .models import DeepSetsOperator, GatedHLG, SetTransformerOperator, StormRME
 from .provenance import write_json_atomic
 from .sampling import sample_scene_indices, valid_query_indices
 from .schema import load_scene
+from .training_state import load_training_state, save_training_state, training_state_path
 
 
 @dataclass(frozen=True)
@@ -347,13 +348,24 @@ def train_point_model(
     support_counts = list(config["data"]["support_counts"])
     sampling_modes = list(config["data"]["sampling_modes"])
     query_batch = int(config["model"].get("query_batch", 768))
-    rng = np.random.default_rng(seed)
-    history: list[dict[str, float | int]] = []
+    steps_per_checkpoint = int(config["run"].get("training_checkpoint_interval", 400))
+    if steps_per_checkpoint <= 0:
+        raise ValueError("training_checkpoint_interval must be positive")
+    state_path = training_state_path(output_path)
+    start_step, history, rng, elapsed_before = load_training_state(
+        state_path,
+        model=model,
+        optimizer=optimizer,
+        model_name=name,
+        seed=seed,
+        target_steps=steps,
+        device=device,
+    )
     reset_peak_memory(device)
     synchronize_device(device)
     training_started = time.perf_counter()
     model.train()
-    for step in range(steps):
+    for step in range(start_step, steps):
         scene_index = int(rng.integers(0, len(scenes)))
         arrays = scenes[scene_index]
         count = int(support_counts[int(rng.integers(0, len(support_counts)))])
@@ -371,8 +383,23 @@ def train_point_model(
         optimizer.step()
         if step == 0 or (step + 1) % max(1, steps // 40) == 0:
             history.append({"step": step + 1, "loss": float(loss.detach().cpu())})
+        if (step + 1) % steps_per_checkpoint == 0:
+            synchronize_device(device)
+            save_training_state(
+                state_path,
+                model=model,
+                optimizer=optimizer,
+                model_name=name,
+                seed=seed,
+                step=step + 1,
+                target_steps=steps,
+                history=history,
+                rng=rng,
+                elapsed_seconds=elapsed_before + time.perf_counter() - training_started,
+                device=device,
+            )
     synchronize_device(device)
-    training_seconds = time.perf_counter() - training_started
+    training_seconds = elapsed_before + time.perf_counter() - training_started
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -390,6 +417,7 @@ def train_point_model(
         output_path,
     )
     write_json_atomic(output_path.with_suffix(".history.json"), history)
+    state_path.unlink(missing_ok=True)
     memory_mb, memory_measurement = accelerator_memory_mb(device)
     return {
         "model": name,

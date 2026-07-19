@@ -33,6 +33,17 @@ def _write_index(root: Path, rows: list[dict[str, Any]]) -> None:
     write_json_atomic(root / "scene_index.json", list(unique.values()))
 
 
+def _training_artifact_complete(checkpoint: Path, expected_steps: int) -> bool:
+    history_path = checkpoint.with_suffix(".history.json")
+    if not checkpoint.exists() or not history_path.exists():
+        return False
+    try:
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+    return bool(history) and int(history[-1].get("step", -1)) == expected_steps
+
+
 def write_manifests(config: dict[str, Any]) -> Path:
     root = _output_root(config)
     root.mkdir(parents=True, exist_ok=True)
@@ -125,14 +136,19 @@ def train_point_models(config: dict[str, Any], smoke: bool = False) -> list[dict
     if smoke:
         seeds = seeds[:1]
     summaries: list[dict[str, Any]] = []
+    expected_steps = int(config["run"]["train_steps"])
     for model_name in models:
         for seed in seeds:
             checkpoint = root / "checkpoints" / f"{model_name}_seed{seed}.pt"
-            if checkpoint.exists() and config["run"].get("resume", True):
+            if (
+                config["run"].get("resume", True)
+                and _training_artifact_complete(checkpoint, expected_steps)
+            ):
                 summaries.append({"model": model_name, "seed": seed, "checkpoint": str(checkpoint), "resumed": True})
                 continue
             summaries.append(train_point_model(model_name, train_paths, config, int(seed), checkpoint))
             write_json_atomic(root / "training_summary.json", summaries)
+    write_json_atomic(root / "training_summary.json", summaries)
     return summaries
 
 
@@ -156,10 +172,14 @@ def train_deepmimo_crosscity_models(config: dict[str, Any]) -> list[dict[str, An
     ]
     checkpoint_subdir = str(settings.get("checkpoint_subdir", "deepmimo_crosscity_checkpoints"))
     summaries: list[dict[str, Any]] = []
+    expected_steps = int(config["run"]["train_steps"])
     for model_name in models:
         for seed in config["run"]["train_seeds"]:
             checkpoint = root / checkpoint_subdir / f"{model_name}_seed{seed}.pt"
-            if checkpoint.exists() and config["run"].get("resume", True):
+            if (
+                config["run"].get("resume", True)
+                and _training_artifact_complete(checkpoint, expected_steps)
+            ):
                 summaries.append(
                     {
                         "model": model_name,
@@ -179,6 +199,7 @@ def train_deepmimo_crosscity_models(config: dict[str, Any]) -> list[dict[str, An
             )
             summaries.append(summary)
             write_json_atomic(root / "deepmimo_crosscity_training_summary.json", summaries)
+    write_json_atomic(root / "deepmimo_crosscity_training_summary.json", summaries)
     return summaries
 
 
@@ -197,14 +218,19 @@ def train_grid_models(config: dict[str, Any], smoke: bool = False) -> list[dict[
     if smoke:
         seeds = seeds[:1]
     summaries: list[dict[str, Any]] = []
+    expected_steps = int(config["run"]["train_steps"])
     for model_name in models:
         for seed in seeds:
             checkpoint = root / "checkpoints" / f"{model_name}_seed{seed}.pt"
-            if checkpoint.exists() and config["run"].get("resume", True):
+            if (
+                config["run"].get("resume", True)
+                and _training_artifact_complete(checkpoint, expected_steps)
+            ):
                 summaries.append({"model": model_name, "seed": seed, "checkpoint": str(checkpoint), "resumed": True})
                 continue
             summaries.append(train_grid_model(model_name, train_paths, config, int(seed), checkpoint))
             write_json_atomic(root / "grid_training_summary.json", summaries)
+    write_json_atomic(root / "grid_training_summary.json", summaries)
     return summaries
 
 
