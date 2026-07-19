@@ -5,6 +5,10 @@ ROOT="${1:-/mnt/d/Projects/Radio2026/tcsm_rt_full/sionna_deepmimo_full}"
 cd "$ROOT"
 mkdir -p logs
 
+# WSL exposes CUDA to PyTorch but this host does not provide libnvoptix.so.1.
+# Sionna RT therefore uses its official LLVM variant; neural training remains on CUDA.
+export TCSM_MITSUBA_VARIANT="${TCSM_MITSUBA_VARIANT:-llvm_ad_mono_polarized}"
+
 VENV="${TCSM_VENV:-/home/zheng/.venvs/tcsm-rt}"
 if [[ ! -x "$VENV/bin/python" ]]; then
   mkdir -p "$(dirname "$VENV")"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,16 @@ from typing import Any
 import numpy as np
 import torch
 
-from .learning import _coordinates, _one_hot, compute_class_weights, multitask_loss, resolve_device
+from .learning import (
+    _coordinates,
+    _one_hot,
+    accelerator_memory_mb,
+    compute_class_weights,
+    multitask_loss,
+    reset_peak_memory,
+    resolve_device,
+    synchronize_device,
+)
 from .models import FNOOperator, RadioUNet, WNOOperator
 from .provenance import write_json_atomic
 from .sampling import sample_scene_indices, valid_query_indices
@@ -173,6 +183,9 @@ def train_grid_model(
     sampling_modes = list(config["data"]["sampling_modes"])
     rng = np.random.default_rng(seed)
     history: list[dict[str, float | int]] = []
+    reset_peak_memory(device)
+    synchronize_device(device)
+    training_started = time.perf_counter()
     model.train()
     for step in range(steps):
         arrays = scenes[int(rng.integers(0, len(scenes)))]
@@ -188,6 +201,8 @@ def train_grid_model(
         optimizer.step()
         if step == 0 or (step + 1) % max(1, steps // 40) == 0:
             history.append({"step": step + 1, "loss": float(loss.detach().cpu())})
+    synchronize_device(device)
+    training_seconds = time.perf_counter() - training_started
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -204,10 +219,17 @@ def train_grid_model(
         output_path,
     )
     write_json_atomic(output_path.with_suffix(".history.json"), history)
+    memory_mb, memory_measurement = accelerator_memory_mb(device)
     return {
         "model": name,
         "seed": seed,
         "checkpoint": str(output_path),
         "parameters": sum(parameter.numel() for parameter in model.parameters()),
         "final_loss": history[-1]["loss"],
+        "training_seconds": training_seconds,
+        "steps_per_second": steps / max(training_seconds, 1e-12),
+        "checkpoint_mb": output_path.stat().st_size / 2**20,
+        "accelerator_memory_mb": memory_mb,
+        "memory_measurement": memory_measurement,
+        "device": str(device),
     }

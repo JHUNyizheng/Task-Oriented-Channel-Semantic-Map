@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -189,6 +190,26 @@ def resolve_device(requested: str) -> torch.device:
     return torch.device("cpu")
 
 
+def synchronize_device(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    elif device.type == "mps":
+        torch.mps.synchronize()
+
+
+def reset_peak_memory(device: torch.device) -> None:
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+
+
+def accelerator_memory_mb(device: torch.device) -> tuple[float, str]:
+    if device.type == "cuda":
+        return float(torch.cuda.max_memory_allocated(device) / 2**20), "cuda_peak_allocated"
+    if device.type == "mps":
+        return float(torch.mps.current_allocated_memory() / 2**20), "mps_allocated_at_end"
+    return 0.0, "not_applicable"
+
+
 def _new_model(name: str, batch: PointBatch, config: dict[str, Any]) -> torch.nn.Module:
     model_config = config["model"]
     support_dim = batch.support.shape[-1]
@@ -247,6 +268,9 @@ def train_point_model(
     query_batch = int(config["model"].get("query_batch", 768))
     rng = np.random.default_rng(seed)
     history: list[dict[str, float | int]] = []
+    reset_peak_memory(device)
+    synchronize_device(device)
+    training_started = time.perf_counter()
     model.train()
     for step in range(steps):
         scene_index = int(rng.integers(0, len(scenes)))
@@ -266,6 +290,8 @@ def train_point_model(
         optimizer.step()
         if step == 0 or (step + 1) % max(1, steps // 40) == 0:
             history.append({"step": step + 1, "loss": float(loss.detach().cpu())})
+    synchronize_device(device)
+    training_seconds = time.perf_counter() - training_started
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
@@ -283,10 +309,17 @@ def train_point_model(
         output_path,
     )
     write_json_atomic(output_path.with_suffix(".history.json"), history)
+    memory_mb, memory_measurement = accelerator_memory_mb(device)
     return {
         "model": name,
         "seed": seed,
         "checkpoint": str(output_path),
         "parameters": sum(parameter.numel() for parameter in model.parameters()),
         "final_loss": history[-1]["loss"],
+        "training_seconds": training_seconds,
+        "steps_per_second": steps / max(training_seconds, 1e-12),
+        "checkpoint_mb": output_path.stat().st_size / 2**20,
+        "accelerator_memory_mb": memory_mb,
+        "memory_measurement": memory_measurement,
+        "device": str(device),
     }

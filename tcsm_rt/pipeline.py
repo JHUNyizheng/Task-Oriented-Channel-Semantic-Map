@@ -9,6 +9,7 @@ from .data.common import sionna_configuration_manifest
 from .data.deepmimo_adapter import generate_deepmimo_scenario
 from .data.sionna_adapter import generate_sionna_scene
 from .evaluation import evaluate_models
+from .diagnostics import profile_models, run_robustness, run_threshold_sensitivity
 from .grid_learning import GRID_MODELS, train_grid_model
 from .learning import train_point_model
 from .provenance import environment_manifest, sha256_file, write_json_atomic
@@ -156,10 +157,19 @@ def run_full(config: dict[str, Any]) -> dict[str, Any]:
     point_training = train_point_models(config)
     grid_training = train_grid_models(config)
     evaluation = evaluate_models(config, _output_root(config))
+    threshold_sensitivity = run_threshold_sensitivity(config, _output_root(config))
+    robustness = run_robustness(config, _output_root(config))
+    deployment = profile_models(config, _output_root(config)) if config.get("deployment") else {
+        "status": "skipped",
+        "reason": "deployment section is absent",
+    }
     report = audit_run(_output_root(config))
     return {
         "point_training": point_training,
         "grid_training": grid_training,
         "evaluation": evaluation,
+        "threshold_sensitivity": threshold_sensitivity,
+        "robustness": robustness,
+        "deployment": deployment,
         "audit": report,
     }

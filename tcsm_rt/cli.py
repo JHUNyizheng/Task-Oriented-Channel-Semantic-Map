@@ -10,6 +10,7 @@ from pathlib import Path
 from .audit import audit_run
 from .config import load_config
 from .evaluation import evaluate_models
+from .diagnostics import profile_models, run_robustness, run_threshold_sensitivity
 from .pipeline import (
     _output_root,
     prepare_deepmimo,
@@ -34,6 +35,9 @@ def _parser() -> argparse.ArgumentParser:
         "train-point",
         "train-grid",
         "evaluate",
+        "threshold-sensitivity",
+        "robustness",
+        "profile",
         "run",
         "audit",
     ):
@@ -65,12 +69,14 @@ def doctor(config_path: str) -> dict:
         except Exception as error:  # package import failures are part of the doctor output
             imports[name] = {"available": False, "error": repr(error)}
     torch_module = importlib.import_module("torch") if imports["torch"]["available"] else None
+    mitsuba_module = importlib.import_module("mitsuba") if imports["mitsuba"]["available"] else None
     result = {
         "python": sys.version,
         "config": str(Path(config_path).resolve()),
         "imports": imports,
         "cuda_available": bool(torch_module and torch_module.cuda.is_available()),
         "cuda_device": torch_module.cuda.get_device_name(0) if torch_module and torch_module.cuda.is_available() else None,
+        "mitsuba_variant": mitsuba_module.variant() if mitsuba_module else None,
         "valid": all(value["available"] for value in imports.values()),
         "run_name": config["run"]["name"],
     }
@@ -99,6 +105,12 @@ def main() -> None:
             result = train_grid_models(config)
         elif args.command == "evaluate":
             result = evaluate_models(config, _output_root(config))
+        elif args.command == "threshold-sensitivity":
+            result = run_threshold_sensitivity(config, _output_root(config))
+        elif args.command == "robustness":
+            result = run_robustness(config, _output_root(config))
+        elif args.command == "profile":
+            result = profile_models(config, _output_root(config))
         elif args.command == "run":
             if args.resume:
                 config["run"]["resume"] = True

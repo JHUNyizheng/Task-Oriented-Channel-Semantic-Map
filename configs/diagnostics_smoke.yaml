@@ -1,0 +1,77 @@
+run:
+  name: diagnostics_smoke
+  seed: 20260719
+  output_dir: outputs/diagnostics_smoke
+  resume: true
+  device: cpu
+  train_steps: 8
+  train_seeds: [11]
+  eval_seeds: [101]
+data:
+  grid_size: 7
+  cell_size_m: 2.0
+  support_counts: [1, 3, 8]
+  sampling_modes: [scatter, trajectory]
+  sionna:
+    enabled: true
+    scenes: [simple_street_canyon]
+    configs_per_split: {train: 1, id: 1, geometry_ood: 0, system_ood: 0, compound_ood: 0}
+    train_frequencies_ghz: [28]
+    train_arrays: [16]
+    ood_frequencies_ghz: [60]
+    ood_arrays: [24]
+    max_depth: 2
+    samples_per_source: 20000
+    diffuse_reflection: false
+    channel_mode: explicit_array
+    explicit_batch_size: 16
+    explicit_validation_points_per_scene: 2
+  deepmimo:
+    enabled: false
+model:
+  hidden: 32
+  local_neighbors: 4
+  far_beams: 17
+  near_angles: 17
+  near_ranges: 5
+  baselines: [knn, idw, deepsets, set_transformer, gated_hlg]
+system:
+  tx_power_dbm: 30.0
+  bandwidth_hz: 100000000.0
+  noise_figure_db: 7.0
+  regime_low_margin_bps_hz: 0.20
+  regime_high_margin_bps_hz: 0.75
+thresholds:
+  fixed_bps_hz: [0.1, 0.5, 1.0]
+  low_to_high_ratio: 0.2666666667
+  sensitivity_train_seeds: [11]
+  models: [set_transformer, gated_hlg]
+  support_count: 3
+  sampling_mode: trajectory
+  eval_seeds: [101]
+  adaptive_clip_bps_hz: [0.1, 1.0]
+  mcs_spectral_efficiency_bps_hz: [0.2344, 0.6016, 1.1758, 1.9141, 2.7305, 3.9023, 5.5547]
+robustness:
+  models: [set_transformer, gated_hlg]
+  train_seeds: [11]
+  support_count: 3
+  sampling_mode: trajectory
+  eval_seeds: [101]
+  position_error_m: [0, 1]
+  power_noise_db: [0, 3]
+  label_error_fraction: [0, 0.2]
+  support_missing_fraction: [0, 0.5]
+  trajectory_jitter_fraction: [0, 0.2]
+deployment:
+  models: [knn, idw, deepsets, set_transformer, gated_hlg]
+  train_seeds: [11]
+  support_count: 3
+  sampling_mode: trajectory
+  devices: [cpu]
+  warmup: 1
+  repeats: 3
+statistics:
+  bootstrap_samples: 100
+  confidence: 0.95
+  paired_test: wilcoxon
+  multiple_testing: holm

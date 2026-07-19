@@ -42,9 +42,15 @@ METRIC_FIELDS = (
     "regime_accuracy",
     "regime_macro_f1",
     "regime_ece",
+    "regime_nll",
+    "regime_brier",
+    "regime_confidence",
+    "regime_entropy",
     "far_top1",
     "far_top3",
     "far_index_mae",
+    "far_confidence",
+    "far_entropy",
     "near_angle_top1",
     "near_angle_top3",
     "near_range_top1",
@@ -241,8 +247,10 @@ def _prediction_metrics(
     task_scope = task_scope or {"rss", "regime", "far_beam", "near_focus", "rate_decision"}
     truth_regime = arrays["regime"][query]
     regime_logits = prediction["regime_logits"]
+    regime_probability = _softmax(regime_logits)
     regime_prediction = np.argmax(regime_logits, axis=1)
     far_prediction = np.argmax(prediction["far_logits"], axis=1)
+    far_probability = _softmax(prediction["far_logits"])
     angle_prediction = np.argmax(prediction["near_angle_logits"], axis=1)
     range_prediction = np.argmax(prediction["near_range_logits"], axis=1)
     far_rates = arrays["far_rates"][query]
@@ -290,13 +298,53 @@ def _prediction_metrics(
         "regime_accuracy": regime_metrics["accuracy"],
         "regime_macro_f1": regime_metrics["macro_f1"],
         "regime_ece": (
-            _expected_calibration_error(_softmax(regime_logits), truth_regime)
+            _expected_calibration_error(regime_probability, truth_regime)
+            if full_task
+            else float("nan")
+        ),
+        "regime_nll": (
+            float(-np.mean(np.log(np.maximum(regime_probability[np.arange(len(query)), truth_regime], 1e-12))))
+            if full_task
+            else float("nan")
+        ),
+        "regime_brier": (
+            float(
+                np.mean(
+                    np.sum(
+                        (regime_probability - np.eye(3, dtype=np.float64)[truth_regime]) ** 2,
+                        axis=1,
+                    )
+                )
+            )
+            if full_task
+            else float("nan")
+        ),
+        "regime_confidence": (
+            float(np.mean(np.max(regime_probability, axis=1))) if full_task else float("nan")
+        ),
+        "regime_entropy": (
+            float(
+                np.mean(
+                    -np.sum(
+                        regime_probability * np.log(np.maximum(regime_probability, 1e-12)),
+                        axis=1,
+                    )
+                    / np.log(regime_probability.shape[1])
+                )
+            )
             if full_task
             else float("nan")
         ),
         "far_top1": float(np.mean(far_prediction == arrays["best_far_idx"][query])),
         "far_top3": _topk_accuracy(prediction["far_logits"], arrays["best_far_idx"][query], 3),
         "far_index_mae": float(np.mean(np.abs(far_prediction - arrays["best_far_idx"][query]))),
+        "far_confidence": float(np.mean(np.max(far_probability, axis=1))),
+        "far_entropy": float(
+            np.mean(
+                -np.sum(far_probability * np.log(np.maximum(far_probability, 1e-12)), axis=1)
+                / np.log(far_probability.shape[1])
+            )
+        ),
         "near_angle_top1": (
             float(np.mean(angle_prediction == arrays["best_near_angle"][query]))
             if full_task
@@ -503,6 +551,21 @@ def summarize_evaluation(rows: list[dict[str, Any]], config: dict[str, Any]) -> 
         "far_top3",
         "far_index_mae",
         "regime_macro_f1",
+        "regime_ece",
+        "regime_nll",
+        "regime_brier",
+        "regime_confidence",
+        "regime_entropy",
+        "far_confidence",
+        "far_entropy",
+        "near_angle_top1",
+        "near_angle_top3",
+        "near_range_top1",
+        "near_angle_mae_deg",
+        "near_range_mae_m",
+        "near_policy_gap",
+        "cross_policy_gap",
+        "far_policy_gap",
         "rss_rmse_db",
     )
     group_keys = ("model", "source", "split", "support_count", "sampling_mode")

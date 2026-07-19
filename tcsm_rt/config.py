@@ -47,6 +47,22 @@ def validate_config(config: dict[str, Any]) -> None:
     high = float(system["regime_high_margin_bps_hz"])
     if not 0.0 <= low < high:
         raise ValueError("regime margins must satisfy 0 <= low < high")
+    thresholds = config.get("thresholds")
+    if thresholds:
+        values = [float(value) for value in thresholds.get("fixed_bps_hz", [])]
+        if not values or values != sorted(set(values)) or values[0] <= 0:
+            raise ValueError("thresholds.fixed_bps_hz must be positive, sorted, and unique")
+        ratio = float(thresholds.get("low_to_high_ratio", low / high))
+        if not 0.0 <= ratio < 1.0:
+            raise ValueError("thresholds.low_to_high_ratio must lie in [0, 1)")
+    robustness = config.get("robustness")
+    if robustness:
+        for key, values in robustness.items():
+            if key in {"models", "train_seeds", "support_count", "sampling_mode"}:
+                continue
+            numeric = [float(value) for value in values]
+            if numeric != sorted(set(numeric)) or numeric[0] < 0:
+                raise ValueError(f"robustness.{key} must be non-negative, sorted, and unique")
 
 
 def canonical_json(config: dict[str, Any]) -> str:

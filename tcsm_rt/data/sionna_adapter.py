@@ -14,7 +14,11 @@ from ..physics import (
 )
 from ..provenance import sha256_file, write_json_atomic
 from ..schema import save_scene
+from ..sionna_backend import configure_mitsuba_variant
 from .common import RTConfiguration, grid_xyz
+
+
+configure_mitsuba_variant()
 
 
 def _to_numpy(value: Any) -> np.ndarray:
