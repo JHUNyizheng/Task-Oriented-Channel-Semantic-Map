@@ -40,6 +40,20 @@ tcsm-rt run --config configs/full_rt.yaml --resume
 tcsm-rt audit --run-dir outputs/full_rt
 ```
 
+Paper-facing diagnostics are explicit stages rather than configuration-only claims:
+
+```bash
+tcsm-rt threshold-sensitivity --config configs/full_rt.yaml
+tcsm-rt robustness --config configs/full_rt.yaml
+tcsm-rt profile --config configs/full_rt.yaml
+```
+
+The threshold stage keeps the declared low/high hysteresis ratio while sweeping the high margin
+from 0.1 to 1.0 bit/s/Hz and also reports an MCS-aware margin from 3GPP spectral efficiencies. The
+robustness stage corrupts estimator-visible support evidence while retaining independent query
+truth. The deployment stage reports end-to-end latency, throughput, checkpoint size, parameter
+count, and device-memory measurements.
+
 The ray-budget convergence study is run before full Sionna generation. The selected sample count
 must satisfy the declared channel and task-label convergence tolerances.
 
@@ -64,7 +78,9 @@ unchanged reproductions of their source papers.
 ## Distributed execution
 
 `configs/compute_allocation.yaml` assigns Sionna RT generation, convergence checks, and seeds
-11/23/37 to the CUDA worker. The Apple-silicon worker runs seeds 53/71 and complete DeepMIMO
+11/23/37 to the CUDA worker. On the current WSL host, official Sionna RT kernels use Mitsuba's LLVM
+backend because the NVIDIA OptiX runtime is unavailable; PyTorch training remains on CUDA. The
+Apple-silicon worker runs seeds 53/71 and complete DeepMIMO
 external validation after importing only the 32 verified Sionna training caches. The staging and
 merge scripts verify SHA-256 digests and reject evaluation-split leakage.
 

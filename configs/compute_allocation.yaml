@@ -3,7 +3,9 @@ evidence_run: tcsm_rt_full_2026
 workers:
   zhengyi:
     platform: wsl2_cuda
-    accelerator: rtx_4090_laptop_12gb
+    accelerator: rtx_4000_ada_generation_laptop
+    rt_backend: llvm_ad_mono_polarized
+    training_backend: cuda
     config: configs/full_rt_zhengyi.yaml
     train_seeds: [11, 23, 37]
     stages: [ray_budget_convergence, sionna_explicit_array, point_training, grid_training, sionna_evaluation]
