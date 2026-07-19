@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from tcsm_rt.evaluation import _prediction_metrics
+from tcsm_rt.evaluation import _prediction_metrics, evaluation_partitions
 from tcsm_rt.learning import build_point_batch
 from tcsm_rt.physics import make_task_labels
 
@@ -89,3 +89,22 @@ def test_external_metrics_do_not_report_near_field_or_policy_results():
     assert np.isnan(metrics["mean_policy_gap"])
     assert np.isnan(metrics["regime_macro_f1"])
     assert np.isnan(metrics["near_angle_top1"])
+
+
+def test_deepmimo_evaluation_uses_contiguous_support_and_query_stripes():
+    arrays = _external_scene()
+    arrays["spatial_split"] = np.repeat([0, 1, 2], 3).astype(np.int8)
+    row = {
+        "cache": "/tmp/deepmimo_city_tx00.npz",
+        "source": "deepmimo_v4",
+        "split": "deepmimo_newyork",
+    }
+    partitions = evaluation_partitions(arrays, row, 2, "trajectory", 17)
+    assert [partition[0] for partition in partitions] == [
+        "deepmimo_city_tx00__spatial_id",
+        "deepmimo_city_tx00__spatial_holdout",
+    ]
+    for _, _, support, _ in partitions:
+        assert set(support) <= {0, 1, 2}
+    np.testing.assert_array_equal(partitions[0][3], [3, 4, 5])
+    np.testing.assert_array_equal(partitions[1][3], [6, 7, 8])

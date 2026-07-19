@@ -15,7 +15,7 @@ from .learning import PointBatch, build_point_batch, resolve_device
 from .metrics import classification_metrics, clustered_bootstrap_ci, executed_rate, holm_adjust, paired_wilcoxon, policy_gap, rmse_db
 from .models import DeepSetsOperator, GatedHLG, SetTransformerOperator, StormRMEOperator
 from .provenance import write_json_atomic
-from .sampling import sample_scene_indices, valid_query_indices
+from .sampling import sample_indices, sample_scene_indices, valid_query_indices
 from .schema import load_scene
 
 
@@ -70,6 +70,43 @@ GATE_FIELDS = tuple(
     for stat in ("mean", "p10", "p90")
 )
 RAW_FIELDS = (*BASE_FIELDS, *METRIC_FIELDS, *GATE_FIELDS)
+
+
+def evaluation_partitions(
+    arrays: dict[str, np.ndarray],
+    scene_row: dict[str, Any],
+    support_count: int,
+    mode: str,
+    seed: int,
+) -> list[tuple[str, str, np.ndarray, np.ndarray]]:
+    scene_id = Path(scene_row["cache"]).stem
+    source = str(scene_row.get("source", ""))
+    valid = valid_query_indices(arrays)
+    if source.startswith("deepmimo"):
+        if "spatial_split" not in arrays:
+            raise ValueError(f"DeepMIMO cache lacks spatial_split: {scene_row['cache']}")
+        spatial = np.asarray(arrays["spatial_split"], dtype=np.int8)
+        support_candidates = np.intersect1d(valid, np.flatnonzero(spatial == 0))
+        local_count = min(int(support_count), len(support_candidates) - 1)
+        local = sample_indices(arrays["query_xyz_m"][support_candidates], local_count, mode, seed)
+        support = support_candidates[local]
+        partitions: list[tuple[str, str, np.ndarray, np.ndarray]] = []
+        base_split = str(scene_row.get("split", "deepmimo_external"))
+        for partition_id, partition_name in ((1, "spatial_id"), (2, "spatial_holdout")):
+            query = np.intersect1d(valid, np.flatnonzero(spatial == partition_id))
+            if len(query):
+                partitions.append(
+                    (
+                        f"{scene_id}__{partition_name}",
+                        f"{base_split}_{partition_name}",
+                        support,
+                        query,
+                    )
+                )
+        return partitions
+    support = sample_scene_indices(arrays, support_count, mode, seed)
+    query = np.setdiff1d(valid, support)
+    return [(scene_id, str(scene_row.get("split", "external")), support, query)]
 
 
 def _softmax(logits: np.ndarray) -> np.ndarray:
@@ -461,47 +498,48 @@ def evaluate_models(config: dict[str, Any], run_dir: Path) -> dict[str, Any]:
             for support_count, mode, eval_seed in conditions:
                 if support_count >= len(valid):
                     continue
-                support = sample_scene_indices(
+                partitions = evaluation_partitions(
                     arrays,
+                    scene_row,
                     support_count,
                     mode,
                     eval_seed + int(scene_row.get("seed", 0)),
                 )
-                query = np.setdiff1d(valid, support)
-                row_key = (
-                    Path(scene_row["cache"]).stem,
-                    model_name,
-                    train_seed,
-                    eval_seed,
-                    support_count,
-                    mode,
-                )
-                if row_key in seen:
-                    continue
-                prediction = predictor(arrays, support, query)
-                task_scope = set(
-                    scene_row.get(
-                        "external_task_scope",
-                        ["rss", "regime", "far_beam", "near_focus", "rate_decision"],
+                for scene_id, split, support, query in partitions:
+                    row_key = (
+                        scene_id,
+                        model_name,
+                        train_seed,
+                        eval_seed,
+                        support_count,
+                        mode,
                     )
-                )
-                metric = _prediction_metrics(arrays, query, prediction, config, task_scope)
-                writer.writerow(
-                    {
-                    "source": scene_row["source"],
-                    "split": scene_row.get("split", "external"),
-                    "scene_id": Path(scene_row["cache"]).stem,
-                    "model": model_name,
-                    "train_seed": train_seed,
-                    "eval_seed": eval_seed,
-                    "support_count": support_count,
-                    "support_ratio": support_count / len(valid),
-                    "sampling_mode": mode,
-                    **metric,
-                    }
-                )
-                append_handle.flush()
-                seen.add(row_key)
+                    if row_key in seen:
+                        continue
+                    prediction = predictor(arrays, support, query)
+                    task_scope = set(
+                        scene_row.get(
+                            "external_task_scope",
+                            ["rss", "regime", "far_beam", "near_focus", "rate_decision"],
+                        )
+                    )
+                    metric = _prediction_metrics(arrays, query, prediction, config, task_scope)
+                    writer.writerow(
+                        {
+                            "source": scene_row["source"],
+                            "split": split,
+                            "scene_id": scene_id,
+                            "model": model_name,
+                            "train_seed": train_seed,
+                            "eval_seed": eval_seed,
+                            "support_count": len(support),
+                            "support_ratio": len(support) / len(valid),
+                            "sampling_mode": mode,
+                            **metric,
+                        }
+                    )
+                    append_handle.flush()
+                    seen.add(row_key)
 
     for baseline in ("knn", "idw"):
         evaluate_one(
