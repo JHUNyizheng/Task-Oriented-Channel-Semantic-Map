@@ -17,6 +17,9 @@ def load_config(path: str | Path) -> dict[str, Any]:
     sample_override = os.environ.get("TCSM_SAMPLES_PER_SOURCE")
     if sample_override:
         config["data"]["sionna"]["samples_per_source"] = int(sample_override)
+    output_override = os.environ.get("TCSM_OUTPUT_DIR")
+    if output_override:
+        config["run"]["output_dir"] = output_override
     config["_config_path"] = str(config_path)
     validate_config(config)
     return config

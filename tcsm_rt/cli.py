@@ -55,6 +55,9 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--config", required=True)
         if name in {"prepare-sionna", "prepare-deepmimo"}:
             command.add_argument("--limit", type=int)
+        if name == "prepare-sionna":
+            command.add_argument("--record-start", type=int)
+            command.add_argument("--record-stop", type=int)
         if name == "run":
             command.add_argument("--resume", action="store_true")
     return parser
@@ -103,7 +106,12 @@ def main() -> None:
         elif args.command == "smoke":
             result = run_smoke(config)
         elif args.command == "prepare-sionna":
-            result = prepare_sionna(config, limit=args.limit)
+            result = prepare_sionna(
+                config,
+                limit=args.limit,
+                record_start=args.record_start,
+                record_stop=args.record_stop,
+            )
         elif args.command == "prepare-deepmimo":
             result = prepare_deepmimo(config, limit_scenarios=args.limit)
         elif args.command == "train-point":

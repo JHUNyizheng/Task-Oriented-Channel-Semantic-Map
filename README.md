@@ -121,6 +121,11 @@ Apple-silicon worker runs seeds 53/71 and complete DeepMIMO
 external validation after importing only the 32 verified Sionna training caches. The staging and
 merge scripts verify SHA-256 digests and reject evaluation-split leakage.
 
+`scripts/run_zhengyi_sharded_full.sh` divides the 96 CPU ray-tracing records into three disjoint
+half-open intervals. Every worker writes a separate output directory. The coordinator verifies
+cache hashes during merge, requires all 96 configurations, and starts training only after the
+merged training-label coverage gate passes.
+
 No machine password, access token, raw proprietary data, or private path is stored in this
 repository.
 

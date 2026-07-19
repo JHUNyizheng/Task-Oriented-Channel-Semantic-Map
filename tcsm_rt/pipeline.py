@@ -42,13 +42,25 @@ def write_manifests(config: dict[str, Any]) -> Path:
     return root
 
 
-def prepare_sionna(config: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+def prepare_sionna(
+    config: dict[str, Any],
+    limit: int | None = None,
+    record_start: int | None = None,
+    record_stop: int | None = None,
+) -> list[dict[str, Any]]:
     root = write_manifests(config)
     cache_dir = root / "scenes"
     cache_dir.mkdir(parents=True, exist_ok=True)
     rows = _load_index(root)
     existing = {str(row["cache"]): row for row in rows}
     records = sionna_configuration_manifest(config)
+    start = 0 if record_start is None else int(record_start)
+    stop = len(records) if record_stop is None else int(record_stop)
+    if start < 0 or stop > len(records) or start >= stop:
+        raise ValueError(
+            f"invalid Sionna record interval [{start}, {stop}) for {len(records)} records"
+        )
+    records = records[start:stop]
     if limit is not None:
         records = records[:limit]
     completion: list[dict[str, Any]] = []
