@@ -53,6 +53,13 @@ fi
 "$PYTHON" scripts/audit_sionna_material_metadata.py \
   --run-dir outputs/zhengyi_sionna \
   | tee logs/material_frequency_audit_merged.json
+"$PYTHON" -m tcsm_rt.cli audit --run-dir outputs/zhengyi_sionna \
+  | tee logs/audit_pretraining_zhengyi.json
+"$PYTHON" scripts/package_sionna_training_shard.py \
+  --run-dir outputs/zhengyi_sionna \
+  --output outputs/zhengyi_sionna_training_shard.tar.gz \
+  --expected-count 32 \
+  | tee logs/package_sionna_training_shard.json
 
 "$PYTHON" -m tcsm_rt.cli train-point --config "$CONFIG" | tee logs/train_point_zhengyi.json
 "$PYTHON" -m tcsm_rt.cli train-grid --config "$CONFIG" | tee logs/train_grid_zhengyi.json

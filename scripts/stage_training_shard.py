@@ -19,7 +19,38 @@ def _load_rows(root: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _load_evidence(source: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    candidates = {
+        "audit": (source / "source_audit_report.json", source / "audit_report.json"),
+        "material": (
+            source / "source_material_frequency_audit.json",
+            source / "material_frequency_audit.json",
+        ),
+        "budget": (
+            source / "source_selected_ray_budget.json",
+            source / "convergence" / "selected_ray_budget.json",
+        ),
+    }
+    loaded: dict[str, dict[str, Any]] = {}
+    for name, paths in candidates.items():
+        path = next((candidate for candidate in paths if candidate.exists()), None)
+        if path is None:
+            raise FileNotFoundError(f"missing {name} evidence under {source}")
+        loaded[name] = json.loads(path.read_text(encoding="utf-8"))
+    if not loaded["audit"].get("passed", False):
+        raise ValueError("source Sionna run audit does not pass")
+    if not loaded["material"].get("passed", False):
+        raise ValueError("source material-frequency audit does not pass")
+    if int(loaded["material"].get("scene_metadata_count", -1)) != 96:
+        raise ValueError("source material-frequency audit must cover all 96 Sionna scenes")
+    if int(loaded["budget"].get("selected_samples_per_source", -1)) <= 0:
+        raise ValueError("source ray-budget selection is invalid")
+    return loaded["audit"], loaded["material"], loaded["budget"]
+
+
 def stage_training_shard(source: Path, destination: Path, expected_count: int) -> dict[str, Any]:
+    source_audit, material_audit, budget_report = _load_evidence(source)
+    selected_budget = int(budget_report["selected_samples_per_source"])
     source_rows = [row for row in _load_rows(source) if row.get("split") == "train"]
     if len(source_rows) != expected_count:
         raise ValueError(
@@ -48,14 +79,30 @@ def stage_training_shard(source: Path, destination: Path, expected_count: int) -
         actual_hash = sha256_file(source_cache)
         if row.get("cache_sha256") != actual_hash:
             raise ValueError(f"declared SHA-256 mismatch: {source_cache}")
+        source_metadata = source_cache.with_suffix(".json")
+        if not source_metadata.exists():
+            source_metadata = source / "scenes" / source_metadata.name
+        if not source_metadata.exists():
+            raise FileNotFoundError(source_metadata)
+        metadata_payload = json.loads(source_metadata.read_text(encoding="utf-8"))
+        observed_budget = int(
+            metadata_payload.get("solver", {}).get("samples_per_source", -1)
+        )
+        if observed_budget != selected_budget:
+            raise ValueError(
+                f"cache ray budget {observed_budget} does not match selected budget "
+                f"{selected_budget}: {source_cache}"
+            )
+        if metadata_payload.get("solver", {}).get("element_channel") != "explicit_array":
+            raise ValueError(f"delegated cache is not an explicit-array channel: {source_cache}")
+        if not isinstance(metadata_payload.get("material_frequency"), dict):
+            raise ValueError(f"delegated cache lacks material-frequency metadata: {source_cache}")
         destination_cache = destination_scenes / source_cache.name
         if destination_cache.exists() and sha256_file(destination_cache) != actual_hash:
             raise ValueError(f"conflicting destination cache: {destination_cache}")
         if not destination_cache.exists():
             shutil.copy2(source_cache, destination_cache)
-        metadata = source_cache.with_suffix(".json")
-        if metadata.exists():
-            shutil.copy2(metadata, destination_cache.with_suffix(".json"))
+        shutil.copy2(source_metadata, destination_cache.with_suffix(".json"))
         staged_row = {
             **row,
             "cache": str(destination_cache.resolve()),
@@ -72,6 +119,9 @@ def stage_training_shard(source: Path, destination: Path, expected_count: int) -
         "source": str(source.resolve()),
         "destination": str(destination.resolve()),
         "training_scene_count": len(staged),
+        "source_audit_passed": bool(source_audit["passed"]),
+        "source_material_scene_count": int(material_audit["scene_metadata_count"]),
+        "selected_samples_per_source": selected_budget,
         "cache_sha256": {Path(row["cache"]).name: row["cache_sha256"] for row in staged},
         "excluded_splits": ["id", "geometry_ood", "system_ood", "compound_ood"],
     }

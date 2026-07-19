@@ -15,7 +15,7 @@ data:
   sionna:
     enabled: false
     scenes: [simple_street_canyon]
-    configs_per_split: {train: 0, id: 0, geometry_ood: 0, system_ood: 0, compound_ood: 0}
+    configs_per_split: {train: 32, id: 0, geometry_ood: 0, system_ood: 0, compound_ood: 0}
     train_frequencies_ghz: [28]
     train_arrays: [128]
     ood_frequencies_ghz: [60]
