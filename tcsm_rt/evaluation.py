@@ -562,11 +562,20 @@ def _archive_incompatible_raw_schema(raw_path: Path) -> Path | None:
 
 def evaluate_models(config: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     index = json.loads((run_dir / "scene_index.json").read_text(encoding="utf-8"))
-    scene_rows = [row for row in index if row.get("split") != "train"]
-    checkpoints = sorted((run_dir / "checkpoints").glob("*.pt"))
+    settings = config.get("evaluation", {})
+    selected_splits = set(str(value) for value in settings.get("scene_splits", []))
+    scene_rows = [
+        row
+        for row in index
+        if row.get("split") != "train"
+        and (not selected_splits or str(row.get("split")) in selected_splits)
+    ]
+    checkpoint_subdir = str(settings.get("checkpoint_subdir", "checkpoints"))
+    checkpoints = sorted((run_dir / checkpoint_subdir).glob("*.pt"))
     device = resolve_device(config["run"]["device"])
     conditions = _evaluation_conditions(config)
-    raw_path = run_dir / "metrics" / "evaluation_raw.csv"
+    output_prefix = str(settings.get("output_prefix", "evaluation"))
+    raw_path = run_dir / "metrics" / f"{output_prefix}_raw.csv"
     raw_path.parent.mkdir(parents=True, exist_ok=True)
     _archive_incompatible_raw_schema(raw_path)
     seen: set[tuple[str, str, int, int, int, str]] = set()
@@ -675,11 +684,16 @@ def evaluate_models(config: dict[str, Any], run_dir: Path) -> dict[str, Any]:
     append_handle.close()
     frame = pd.read_csv(raw_path)
     rows = frame.to_dict(orient="records")
-    summary = summarize_evaluation(rows, config)
+    summary = summarize_evaluation(rows, config, run_dir, output_prefix)
     return {"raw": str(raw_path), **summary, "row_count": len(rows)}
 
 
-def summarize_evaluation(rows: list[dict[str, Any]], config: dict[str, Any]) -> dict[str, Any]:
+def summarize_evaluation(
+    rows: list[dict[str, Any]],
+    config: dict[str, Any],
+    run_dir: Path | None = None,
+    output_prefix: str = "evaluation",
+) -> dict[str, Any]:
     metric_names = (
         "mean_policy_gap",
         "p90_policy_gap",
@@ -735,8 +749,12 @@ def summarize_evaluation(rows: list[dict[str, Any]], config: dict[str, Any]) -> 
             summary_row[metric + "_ci_low"] = lower
             summary_row[metric + "_ci_high"] = upper
         summary_rows.append(summary_row)
-    output_root = Path(config["_config_path"]).parent.parent / config["run"]["output_dir"]
-    summary_path = output_root / "metrics" / "evaluation_summary.csv"
+    output_root = (
+        Path(run_dir)
+        if run_dir is not None
+        else Path(config["_config_path"]).parent.parent / config["run"]["output_dir"]
+    )
+    summary_path = output_root / "metrics" / f"{output_prefix}_summary.csv"
     _write_rows(summary_path, summary_rows)
 
     comparison_rows: list[dict[str, Any]] = []
@@ -777,10 +795,10 @@ def summarize_evaluation(rows: list[dict[str, Any]], config: dict[str, Any]) -> 
             for row, adjusted in zip(pending, holm_adjust(p_values), strict=True):
                 row["holm_p_value"] = adjusted
             comparison_rows.extend(pending)
-    significance_path = output_root / "metrics" / "paired_significance.csv"
+    significance_path = output_root / "metrics" / f"{output_prefix}_paired_significance.csv"
     _write_rows(significance_path, comparison_rows)
     write_json_atomic(
-        output_root / "metrics" / "evaluation_manifest.json",
+        output_root / "metrics" / f"{output_prefix}_manifest.json",
         {"raw_rows": len(rows), "summary_rows": len(summary_rows), "comparison_rows": len(comparison_rows)},
     )
     return {"summary": str(summary_path), "significance": str(significance_path)}

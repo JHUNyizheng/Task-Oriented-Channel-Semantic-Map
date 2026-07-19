@@ -23,6 +23,7 @@ class PointBatch:
     local_indices: torch.Tensor
     local_prior: dict[str, torch.Tensor]
     targets: dict[str, torch.Tensor]
+    availability: torch.Tensor
 
 
 def _one_hot(values: np.ndarray, count: int) -> np.ndarray:
@@ -121,6 +122,7 @@ def build_point_batch(
         local_indices=torch.from_numpy(local_indices[None].astype(np.int64)).to(device),
         local_prior={key: torch.from_numpy(value[None]).to(device) for key, value in prior.items()},
         targets={key: torch.from_numpy(value[None]).to(device) for key, value in targets.items()},
+        availability=torch.from_numpy(availability[query_indices][None]).to(device),
     )
 
 
@@ -128,29 +130,46 @@ def multitask_loss(
     prediction: dict[str, torch.Tensor],
     targets: dict[str, torch.Tensor],
     class_weights: dict[str, torch.Tensor] | None = None,
+    availability: torch.Tensor | None = None,
 ) -> torch.Tensor:
     class_weights = class_weights or {}
-    rss = torch.nn.functional.mse_loss(prediction["rss"], targets["rss"])
-    regime = torch.nn.functional.cross_entropy(
-        prediction["regime"].flatten(0, 1),
-        targets["regime"].flatten(),
-        weight=class_weights.get("regime"),
+
+    if availability is None:
+        availability = torch.ones(
+            (*targets["rss"].shape, 5),
+            dtype=prediction["rss"].dtype,
+            device=prediction["rss"].device,
+        )
+
+    def masked_mean(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        mask = mask.to(dtype=values.dtype).reshape_as(values)
+        denominator = torch.sum(mask)
+        if not bool(denominator.detach().cpu() > 0):
+            return torch.sum(values) * 0.0
+        return torch.sum(values * mask) / denominator
+
+    def masked_cross_entropy(task: str, column: int) -> torch.Tensor:
+        logits = prediction[task].flatten(0, 1)
+        truth = targets[task].flatten()
+        mask = availability[..., column].flatten()
+        if not bool(torch.any(mask > 0).detach().cpu()):
+            return torch.sum(logits) * 0.0
+        values = torch.nn.functional.cross_entropy(
+            logits,
+            truth,
+            weight=class_weights.get(task),
+            reduction="none",
+        )
+        return masked_mean(values, mask)
+
+    rss = masked_mean(
+        torch.square(prediction["rss"] - targets["rss"]),
+        availability[..., 0],
     )
-    far = torch.nn.functional.cross_entropy(
-        prediction["far"].flatten(0, 1),
-        targets["far"].flatten(),
-        weight=class_weights.get("far"),
-    )
-    near_angle = torch.nn.functional.cross_entropy(
-        prediction["near_angle"].flatten(0, 1),
-        targets["near_angle"].flatten(),
-        weight=class_weights.get("near_angle"),
-    )
-    near_range = torch.nn.functional.cross_entropy(
-        prediction["near_range"].flatten(0, 1),
-        targets["near_range"].flatten(),
-        weight=class_weights.get("near_range"),
-    )
+    regime = masked_cross_entropy("regime", 1)
+    far = masked_cross_entropy("far", 2)
+    near_angle = masked_cross_entropy("near_angle", 3)
+    near_range = masked_cross_entropy("near_range", 4)
     return 0.15 * rss + 0.65 * regime + 0.60 * far + 0.55 * near_angle + 0.55 * near_range
 
 
@@ -168,15 +187,48 @@ def compute_class_weights(
     result: dict[str, torch.Tensor] = {}
     for task, (array_name, class_count) in specifications.items():
         counts = np.zeros(class_count, dtype=np.float64)
+        availability_column = {
+            "regime": 1,
+            "far": 2,
+            "near_angle": 3,
+            "near_range": 4,
+        }[task]
         for arrays in scenes:
             valid = valid_query_indices(arrays)
+            task_availability = arrays.get("task_availability")
+            if task_availability is not None:
+                valid = valid[np.asarray(task_availability)[valid, availability_column] > 0]
             counts += np.bincount(arrays[array_name][valid], minlength=class_count)
         present = counts > 0
+        if not np.any(present):
+            continue
         weights = np.zeros(class_count, dtype=np.float32)
         weights[present] = 1.0 / np.sqrt(counts[present])
         weights[present] /= np.mean(weights[present])
         weights[present] = np.clip(weights[present], 0.25, 4.0)
         result[task] = torch.from_numpy(weights).to(device)
+    return result
+
+
+def restrict_training_partition(
+    arrays: dict[str, np.ndarray],
+    config: dict[str, Any],
+) -> dict[str, np.ndarray]:
+    """Return a training view restricted to an explicitly declared spatial partition."""
+    settings = config.get("external_training", {})
+    partition = settings.get("spatial_split")
+    if partition is None:
+        return arrays
+    if "spatial_split" not in arrays:
+        raise ValueError("external_training.spatial_split requires a spatial_split array")
+    result = dict(arrays)
+    base = np.asarray(
+        arrays.get("valid_query_mask", np.ones(len(arrays["query_xyz_m"]), dtype=bool)),
+        dtype=bool,
+    )
+    result["valid_query_mask"] = base & (np.asarray(arrays["spatial_split"]) == int(partition))
+    if np.sum(result["valid_query_mask"]) < 2:
+        raise ValueError(f"training spatial partition {partition} retains fewer than two queries")
     return result
 
 
@@ -249,7 +301,7 @@ def train_point_model(
     np.random.seed(seed)
     torch.manual_seed(seed)
     device = resolve_device(config["run"]["device"])
-    scenes = [load_scene(path) for path in scene_paths]
+    scenes = [restrict_training_partition(load_scene(path), config) for path in scene_paths]
     class_weights = compute_class_weights(scenes, config["model"], device)
     first = scenes[0]
     valid_first = valid_query_indices(first)
@@ -284,7 +336,7 @@ def train_point_model(
         batch = build_point_batch(arrays, support, query, config["model"], device)
         optimizer.zero_grad(set_to_none=True)
         prediction = _forward(name, model, batch)
-        loss = multitask_loss(prediction, batch.targets, class_weights)
+        loss = multitask_loss(prediction, batch.targets, class_weights, batch.availability)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
         optimizer.step()

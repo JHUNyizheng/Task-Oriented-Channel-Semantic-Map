@@ -87,6 +87,18 @@ spatial-ID query region, and the furthest 20% form a spatial holdout. The extern
 discarded no-path receivers, split counts, task availability, and cache hashes. It permits RSS and
 far-beam claims only.
 
+The Apple-silicon worker also runs a separate cross-city protocol:
+
+```bash
+tcsm-rt train-deepmimo-crosscity --config configs/deepmimo_crosscity_macstudio.yaml
+tcsm-rt evaluate-deepmimo-crosscity --config configs/deepmimo_crosscity_macstudio.yaml
+```
+
+Only the 60% contiguous New York training stripes contribute gradients. New York spatial-ID and
+holdout stripes, together with both Seattle query stripes, remain evaluation-only. The loss reads
+the released `task_availability` mask and supervises RSS and far-beam heads only; the corresponding
+checkpoints and metrics use the `deepmimo_crosscity` prefix and cannot support near-field claims.
+
 ## Baselines and adaptations
 
 Every baseline is linked to an existing publication in

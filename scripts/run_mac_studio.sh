@@ -32,6 +32,12 @@ system_profiler SPHardwareDataType > logs/hardware_macstudio.txt
   | tee logs/prepare_deepmimo_macstudio.json
 .venv/bin/python -m tcsm_rt.cli deepmimo-audit --config configs/full_rt_macstudio.yaml \
   | tee logs/deepmimo_external_audit_macstudio.json
+.venv/bin/python -m tcsm_rt.cli train-deepmimo-crosscity \
+  --config configs/deepmimo_crosscity_macstudio.yaml \
+  | tee logs/train_deepmimo_crosscity_macstudio.json
+.venv/bin/python -m tcsm_rt.cli evaluate-deepmimo-crosscity \
+  --config configs/deepmimo_crosscity_macstudio.yaml \
+  | tee logs/evaluate_deepmimo_crosscity_macstudio.json
 
 if [[ -z "$SIONNA_TRAIN_SHARD" ]]; then
   printf '%s\n' \

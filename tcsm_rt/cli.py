@@ -19,6 +19,7 @@ from .pipeline import (
     prepare_sionna,
     run_full,
     run_smoke,
+    train_deepmimo_crosscity_models,
     train_grid_models,
     train_point_models,
     write_manifests,
@@ -41,6 +42,8 @@ def _parser() -> argparse.ArgumentParser:
         "robustness",
         "profile",
         "deepmimo-audit",
+        "train-deepmimo-crosscity",
+        "evaluate-deepmimo-crosscity",
         "cases",
         "run",
         "audit",
@@ -117,6 +120,10 @@ def main() -> None:
             result = profile_models(config, _output_root(config))
         elif args.command == "deepmimo-audit":
             result = audit_deepmimo_external(_output_root(config))
+        elif args.command == "train-deepmimo-crosscity":
+            result = train_deepmimo_crosscity_models(config)
+        elif args.command == "evaluate-deepmimo-crosscity":
+            result = evaluate_models(config, _output_root(config))
         elif args.command == "cases":
             result = generate_case_studies(config, _output_root(config))
         elif args.command == "run":

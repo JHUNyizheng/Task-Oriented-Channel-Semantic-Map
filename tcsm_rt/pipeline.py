@@ -11,6 +11,7 @@ from .data.deepmimo_adapter import generate_deepmimo_scenario
 from .data.sionna_adapter import generate_sionna_scene
 from .evaluation import evaluate_models
 from .diagnostics import profile_models, run_robustness, run_threshold_sensitivity
+from .external_audit import audit_deepmimo_external
 from .grid_learning import GRID_MODELS, train_grid_model
 from .learning import train_point_model
 from .provenance import environment_manifest, sha256_file, write_json_atomic
@@ -120,6 +121,52 @@ def train_point_models(config: dict[str, Any], smoke: bool = False) -> list[dict
                 continue
             summaries.append(train_point_model(model_name, train_paths, config, int(seed), checkpoint))
             write_json_atomic(root / "training_summary.json", summaries)
+    return summaries
+
+
+def train_deepmimo_crosscity_models(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Train RSS/far-beam point operators on a spatially isolated DeepMIMO city split."""
+    root = _output_root(config)
+    external_report = audit_deepmimo_external(root)
+    if not external_report["passed"]:
+        raise RuntimeError(f"DeepMIMO external audit failed: {external_report['errors']}")
+    settings = config.get("external_training", {})
+    source_split = str(settings.get("source_split", "deepmimo_newyork"))
+    rows = _load_index(root)
+    train_paths = [Path(row["cache"]) for row in rows if row.get("split") == source_split]
+    if not train_paths:
+        raise RuntimeError(f"no DeepMIMO caches are available for source split {source_split!r}")
+    requested = set(config["model"]["baselines"])
+    models = [
+        name
+        for name in ("deepsets", "set_transformer", "storm", "gated_hlg")
+        if name in requested
+    ]
+    checkpoint_subdir = str(settings.get("checkpoint_subdir", "deepmimo_crosscity_checkpoints"))
+    summaries: list[dict[str, Any]] = []
+    for model_name in models:
+        for seed in config["run"]["train_seeds"]:
+            checkpoint = root / checkpoint_subdir / f"{model_name}_seed{seed}.pt"
+            if checkpoint.exists() and config["run"].get("resume", True):
+                summaries.append(
+                    {
+                        "model": model_name,
+                        "seed": int(seed),
+                        "checkpoint": str(checkpoint),
+                        "resumed": True,
+                    }
+                )
+                continue
+            summary = train_point_model(model_name, train_paths, config, int(seed), checkpoint)
+            summary.update(
+                {
+                    "evidence_scope": ["rss", "far_beam"],
+                    "source_split": source_split,
+                    "training_spatial_split": int(settings.get("spatial_split", 0)),
+                }
+            )
+            summaries.append(summary)
+            write_json_atomic(root / "deepmimo_crosscity_training_summary.json", summaries)
     return summaries
 
 
