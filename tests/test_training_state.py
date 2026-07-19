@@ -70,6 +70,16 @@ def test_training_state_restores_parameters_optimizer_and_rng(tmp_path: Path) ->
     np.testing.assert_array_equal(np.random.randint(0, 1000, size=8), expected_numpy_global)
     assert random.random() == pytest.approx(expected_python)
     torch.testing.assert_close(torch.rand(4), expected_torch)
+    for candidate, candidate_optimizer in (
+        (model, optimizer),
+        (restored_model, restored_optimizer),
+    ):
+        candidate_optimizer.zero_grad(set_to_none=True)
+        continuation_loss = candidate(torch.full((2, 3), 0.25)).square().sum()
+        continuation_loss.backward()
+        candidate_optimizer.step()
+    for key, value in restored_model.state_dict().items():
+        torch.testing.assert_close(value, model.state_dict()[key])
 
 
 def test_complete_training_artifact_requires_final_history_step(tmp_path: Path) -> None:
