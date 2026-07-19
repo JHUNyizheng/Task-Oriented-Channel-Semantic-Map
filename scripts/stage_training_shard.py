@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import tarfile
+import tempfile
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any
 
 from tcsm_rt.provenance import sha256_file, write_json_atomic
@@ -129,13 +132,46 @@ def stage_training_shard(source: Path, destination: Path, expected_count: int) -
     return manifest
 
 
+def _validate_archive_member(member: tarfile.TarInfo) -> None:
+    path = PurePosixPath(member.name)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"unsafe path in training shard: {member.name}")
+    if member.issym() or member.islnk():
+        raise ValueError(f"links are not allowed in training shard: {member.name}")
+    if not (member.isfile() or member.isdir()):
+        raise ValueError(f"unsupported member in training shard: {member.name}")
+
+
+def stage_training_input(source: Path, destination: Path, expected_count: int) -> dict[str, Any]:
+    """Stage a verified shard directory or its packaged ``tar.gz`` archive."""
+    if source.is_dir():
+        return stage_training_shard(source, destination, expected_count)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+
+    archive_hash = sha256_file(source)
+    with tempfile.TemporaryDirectory(prefix="tcsm_training_shard_") as temporary:
+        extracted = Path(temporary)
+        with tarfile.open(source, "r:*") as archive:
+            members = archive.getmembers()
+            for member in members:
+                _validate_archive_member(member)
+            archive.extractall(extracted, members=members, filter="data")
+        manifest = stage_training_shard(extracted, destination, expected_count)
+
+    manifest["source"] = str(source.resolve())
+    manifest["source_archive_sha256"] = archive_hash
+    write_json_atomic(destination / "training_shard_manifest.json", manifest)
+    return manifest
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--expected-count", type=int, default=32)
     args = parser.parse_args()
-    result = stage_training_shard(
+    result = stage_training_input(
         args.source.resolve(),
         args.destination.resolve(),
         args.expected_count,

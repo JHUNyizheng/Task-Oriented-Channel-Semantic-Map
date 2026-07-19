@@ -39,7 +39,8 @@ the benchmark.
 The distributed allocation is recorded in `configs/compute_allocation.yaml`. `ZHENGYI` runs
 Sionna explicit-array generation and training seeds 11, 23 and 37. Mac Studio handles both full
 DeepMIMO cities and delegated training seeds 53 and 71 after importing the 32 Sionna training
-caches through `scripts/stage_training_shard.py`. The importer verifies every declared SHA-256
+caches through `scripts/stage_training_shard.py`. It accepts the packaged `.tar.gz` directly;
+the importer safely extracts the archive, rejects links/path traversal, and verifies every SHA-256
 digest and excludes all Sionna evaluation splits from the Mac worker. The two workers therefore
 produce disjoint training seeds. `scripts/merge_result_shard.py` verifies declared hashes and
 rewrites remote absolute paths before a shard enters the combined evidence directory.

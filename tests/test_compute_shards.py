@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import tarfile
 from pathlib import Path
 
 import numpy as np
@@ -9,7 +8,7 @@ import yaml
 
 from scripts.merge_compute_artifacts import merge_compute_artifacts
 from scripts.package_sionna_training_shard import package_training_shard
-from scripts.stage_training_shard import stage_training_shard
+from scripts.stage_training_shard import stage_training_input
 from tcsm_rt.data.common import sionna_configuration_manifest
 from tcsm_rt.provenance import sha256_file
 
@@ -57,14 +56,12 @@ def test_verified_training_shard_round_trip(tmp_path: Path) -> None:
     archive = tmp_path / "training.tar.gz"
     package = package_training_shard(source, archive, expected_count=1)
     assert package["archive_file_count"] == 7
-    extracted = tmp_path / "extracted"
-    extracted.mkdir()
-    with tarfile.open(archive, "r:gz") as handle:
-        handle.extractall(extracted, filter="data")
     destination = tmp_path / "mac_run"
-    staged = stage_training_shard(extracted, destination, expected_count=1)
+    staged = stage_training_input(archive, destination, expected_count=1)
     assert staged["training_scene_count"] == 1
     assert staged["selected_samples_per_source"] == 500_000
+    assert staged["source"] == str(archive.resolve())
+    assert staged["source_archive_sha256"] == sha256_file(archive)
     staged_cache = next((destination / "scenes").glob("*.npz"))
     assert sha256_file(staged_cache) == sha256_file(cache)
 
