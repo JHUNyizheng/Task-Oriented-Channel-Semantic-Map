@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcsm-rt-full"
+version = "0.1.0"
+description = "Auditable Sionna RT and DeepMIMO experiments for task-oriented channel semantic maps"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "deepmimo==4.0.3",
+  "drjit==1.3.1",
+  "h5py>=3.11",
+  "matplotlib>=3.9",
+  "mitsuba==3.8.0",
+  "numpy==2.2.6",
+  "pandas>=2.2",
+  "pyyaml>=6.0.2",
+  "scikit-learn>=1.6",
+  "scipy>=1.15.3",
+  "sionna-rt==2.0.1",
+  "torch==2.9.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3", "ruff>=0.9"]
+
+[project.scripts]
+tcsm-rt = "tcsm_rt.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["tcsm_rt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+

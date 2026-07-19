@@ -1,0 +1,93 @@
+schema_version: 1
+policy:
+  require_published_reference: true
+  require_adaptation_disclosure: true
+  prohibit_unregistered_baselines: true
+baselines:
+  knn:
+    display_name: KNN
+    paper: "Nearest Neighbor Pattern Classification"
+    authors: [T. M. Cover, P. E. Hart]
+    venue: IEEE Transactions on Information Theory
+    year: 1967
+    doi: 10.1109/TIT.1967.1053964
+    url: https://doi.org/10.1109/TIT.1967.1053964
+    implementation: scipy.spatial.cKDTree
+    adaptation: "Three-neighbor spatial voting; continuous RSS uses an unweighted neighbor mean and task labels use weighted class votes."
+  idw:
+    display_name: IDW
+    paper: "A Two-Dimensional Interpolation Function for Irregularly-Spaced Data"
+    authors: [D. Shepard]
+    venue: ACM National Conference
+    year: 1968
+    doi: 10.1145/800186.810616
+    url: https://doi.org/10.1145/800186.810616
+    implementation: in_repository
+    adaptation: "Inverse-square spatial weights are applied to RSS and to class-probability votes for each T-CSM task."
+  deepsets:
+    display_name: DeepSets
+    paper: "Deep Sets"
+    authors: [M. Zaheer, S. Kottur, S. Ravanbakhsh, B. Poczos, R. Salakhutdinov, A. J. Smola]
+    venue: Advances in Neural Information Processing Systems
+    year: 2017
+    url: https://papers.nips.cc/paper/6931-deep-sets
+    implementation: in_repository_from_paper_equations
+    adaptation: "The permutation-invariant sum/mean representation is retained; a query encoder and the common T-CSM task heads are added."
+  set_transformer:
+    display_name: Set Transformer
+    paper: "Set Transformer: A Framework for Attention-based Permutation-Invariant Neural Networks"
+    authors: [J. Lee, Y. Lee, J. Kim, A. R. Kosiorek, S. Choi, Y. W. Teh]
+    venue: International Conference on Machine Learning
+    year: 2019
+    url: https://proceedings.mlr.press/v97/lee19d.html
+    implementation: in_repository_from_paper_equations
+    adaptation: "Support self-attention and query-to-support attention are retained; the output decoder is replaced by the common T-CSM heads."
+  radiounet:
+    display_name: RadioUNet
+    paper: "RadioUNet: Fast Radio Map Estimation With Convolutional Neural Networks"
+    authors: [R. Levie, C. Yapar, G. Kutyniok, G. Caire]
+    venue: IEEE Transactions on Wireless Communications
+    year: 2021
+    doi: 10.1109/TWC.2021.3109714
+    url: https://doi.org/10.1109/TWC.2021.3109714
+    implementation: in_repository_architecture_adaptation
+    adaptation: "The U-Net encoder-decoder and skip connections are retained. Environment, support mask and observed task channels form the raster input; the scalar path-loss output is replaced by common T-CSM heads."
+  storm:
+    display_name: STORM
+    paper: "Spatial Transformer for Radio Map Estimation"
+    authors: [Q. V. Pham, D. Romero]
+    venue: IEEE International Conference on Communications
+    year: 2025
+    url: https://arxiv.org/abs/2411.01211
+    official_code: https://github.com/uiano/storm_rme
+    official_commit: 573adc8d41774323cb0e0adc9a750add7c33a4c1
+    implementation: in_repository_task_head_adaptation
+    adaptation: "The query-conditioned translation/rotation-invariant pair features and attention mechanism are retained; the scalar radio-map head is replaced by common T-CSM task heads."
+  fno:
+    display_name: FNO
+    paper: "Fourier Neural Operator for Parametric Partial Differential Equations"
+    authors: [Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar]
+    venue: International Conference on Learning Representations
+    year: 2021
+    url: https://openreview.net/forum?id=c8P9NQVtmnO
+    official_code: https://github.com/neuraloperator/neuraloperator
+    implementation: in_repository_from_paper_equations
+    adaptation: "Four Fourier integral layers and local pointwise branches are retained. No physics loss is used, so the baseline is named FNO rather than PINO."
+  wno:
+    display_name: WNO
+    paper: "Wavelet Neural Operator: A Neural Operator for Parametric Partial Differential Equations"
+    authors: [T. Tripura, S. Chakraborty]
+    venue: Computer Methods in Applied Mechanics and Engineering
+    year: 2023
+    doi: 10.1016/j.cma.2022.115783
+    url: https://doi.org/10.1016/j.cma.2022.115783
+    official_code: https://github.com/TapasTripura/WNO
+    implementation: in_repository_haar_adaptation
+    adaptation: "Wavelet-domain kernel mixing and local residual branches are retained with a one-level Haar basis; the output is replaced by common T-CSM heads. The manuscript labels this implementation as a Haar-WNO adaptation."
+  gated_hlg:
+    display_name: Gated-HLG (Ours)
+    paper: this_manuscript
+    venue: manuscript_under_review
+    year: 2026
+    implementation: in_repository
+    adaptation: none

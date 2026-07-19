@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, cite the accompanying T-CSM manuscript and this repository."
+title: "Task-Oriented Channel Semantic Map"
+type: software
+authors:
+  - family-names: Zheng
+    given-names: Yi
+repository-code: "https://github.com/JHUNyizheng/Task-Oriented-Channel-Semantic-Map"
+license: Apache-2.0
+version: 0.1.0
+date-released: 2026-07-19
+keywords:
+  - channel semantic map
+  - near-field communication
+  - beam management
+  - Sionna RT
+  - DeepMIMO

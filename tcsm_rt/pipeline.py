@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from .audit import audit_run
+from .data.common import sionna_configuration_manifest
+from .data.deepmimo_adapter import generate_deepmimo_scenario
+from .data.sionna_adapter import generate_sionna_scene
+from .evaluation import evaluate_models
+from .grid_learning import GRID_MODELS, train_grid_model
+from .learning import train_point_model
+from .provenance import environment_manifest, sha256_file, write_json_atomic
+
+
+def _output_root(config: dict[str, Any]) -> Path:
+    config_root = Path(config["_config_path"]).parent.parent
+    output = Path(config["run"]["output_dir"])
+    return output if output.is_absolute() else config_root / output
+
+
+def _load_index(root: Path) -> list[dict[str, Any]]:
+    path = root / "scene_index.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+
+def _write_index(root: Path, rows: list[dict[str, Any]]) -> None:
+    unique = {str(row["cache"]): row for row in rows}
+    write_json_atomic(root / "scene_index.json", list(unique.values()))
+
+
+def write_manifests(config: dict[str, Any]) -> Path:
+    root = _output_root(config)
+    root.mkdir(parents=True, exist_ok=True)
+    write_json_atomic(root / "environment_manifest.json", environment_manifest(config))
+    records = [record.__dict__ for record in sionna_configuration_manifest(config)]
+    write_json_atomic(root / "sionna_configuration_manifest.json", records)
+    return root
+
+
+def prepare_sionna(config: dict[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+    root = write_manifests(config)
+    cache_dir = root / "scenes"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    rows = _load_index(root)
+    existing = {str(row["cache"]): row for row in rows}
+    records = sionna_configuration_manifest(config)
+    if limit is not None:
+        records = records[:limit]
+    completion: list[dict[str, Any]] = []
+    for record in records:
+        cache = (cache_dir / f"{record.config_id}.npz").resolve()
+        if cache.exists() and config["run"].get("resume", True):
+            metadata_path = cache.with_suffix(".json")
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        else:
+            metadata = generate_sionna_scene(record, config, cache)
+        metadata.update(
+            {
+                "cache": str(cache),
+                "cache_sha256": sha256_file(cache),
+                "source": record.source,
+                "split": record.split,
+            }
+        )
+        existing[str(cache)] = metadata
+        completion.append({"stage": "sionna", "item": record.config_id, "status": "complete"})
+        _write_index(root, list(existing.values()))
+        write_json_atomic(root / "completion_matrix.json", completion)
+    return list(existing.values())
+
+
+def prepare_deepmimo(config: dict[str, Any], limit_scenarios: int | None = None) -> list[dict[str, Any]]:
+    root = write_manifests(config)
+    settings = config["data"]["deepmimo"]
+    scenarios = list(settings["scenarios"])
+    if limit_scenarios is not None:
+        scenarios = scenarios[:limit_scenarios]
+    rows = _load_index(root)
+    raw_dir = root / "deepmimo_scenarios"
+    cache_dir = root / "scenes"
+    for scenario in scenarios:
+        scenario_rows = generate_deepmimo_scenario(scenario, config, raw_dir, cache_dir)
+        for row in scenario_rows:
+            row["split"] = "deepmimo_newyork" if "newyork" in scenario.lower() else "deepmimo_seattle_ood"
+            row["cache"] = str(Path(row["cache"]).resolve())
+        rows.extend(scenario_rows)
+        _write_index(root, rows)
+    return _load_index(root)
+
+
+def train_point_models(config: dict[str, Any], smoke: bool = False) -> list[dict[str, Any]]:
+    root = _output_root(config)
+    rows = _load_index(root)
+    train_paths = [Path(row["cache"]) for row in rows if row.get("split") == "train"]
+    if not train_paths:
+        raise RuntimeError("no training scene caches are available")
+    requested = set(config["model"]["baselines"])
+    models = [name for name in ("deepsets", "set_transformer", "storm", "gated_hlg") if name in requested]
+    if not smoke:
+        models.extend(
+            f"gated_hlg_{name}"
+            for name in config["model"].get("ablations", [])
+        )
+    seeds = list(config["run"]["train_seeds"])
+    if smoke:
+        seeds = seeds[:1]
+    summaries: list[dict[str, Any]] = []
+    for model_name in models:
+        for seed in seeds:
+            checkpoint = root / "checkpoints" / f"{model_name}_seed{seed}.pt"
+            if checkpoint.exists() and config["run"].get("resume", True):
+                summaries.append({"model": model_name, "seed": seed, "checkpoint": str(checkpoint), "resumed": True})
+                continue
+            summaries.append(train_point_model(model_name, train_paths, config, int(seed), checkpoint))
+            write_json_atomic(root / "training_summary.json", summaries)
+    return summaries
+
+
+def train_grid_models(config: dict[str, Any], smoke: bool = False) -> list[dict[str, Any]]:
+    root = _output_root(config)
+    rows = _load_index(root)
+    train_paths = [Path(row["cache"]) for row in rows if row.get("split") == "train"]
+    if not train_paths:
+        raise RuntimeError("no training scene caches are available")
+    requested = set(config["model"]["baselines"])
+    models = [name for name in GRID_MODELS if name in requested]
+    seeds = list(config["run"]["train_seeds"])
+    if smoke:
+        seeds = seeds[:1]
+    summaries: list[dict[str, Any]] = []
+    for model_name in models:
+        for seed in seeds:
+            checkpoint = root / "checkpoints" / f"{model_name}_seed{seed}.pt"
+            if checkpoint.exists() and config["run"].get("resume", True):
+                summaries.append({"model": model_name, "seed": seed, "checkpoint": str(checkpoint), "resumed": True})
+                continue
+            summaries.append(train_grid_model(model_name, train_paths, config, int(seed), checkpoint))
+            write_json_atomic(root / "grid_training_summary.json", summaries)
+    return summaries
+
+
+def run_smoke(config: dict[str, Any]) -> dict[str, Any]:
+    prepare_sionna(config, limit=2)
+    training = train_point_models(config, smoke=True)
+    evaluation = evaluate_models(config, _output_root(config))
+    report = audit_run(_output_root(config))
+    return {"training": training, "evaluation": evaluation, "audit": report}
+
+
+def run_full(config: dict[str, Any]) -> dict[str, Any]:
+    prepare_sionna(config)
+    if config["data"]["deepmimo"].get("enabled", False):
+        prepare_deepmimo(config)
+    point_training = train_point_models(config)
+    grid_training = train_grid_models(config)
+    evaluation = evaluate_models(config, _output_root(config))
+    report = audit_run(_output_root(config))
+    return {
+        "point_training": point_training,
+        "grid_training": grid_training,
+        "evaluation": evaluation,
+        "audit": report,
+    }

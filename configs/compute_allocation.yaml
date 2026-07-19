@@ -1,0 +1,27 @@
+schema_version: 1
+evidence_run: tcsm_rt_full_2026
+workers:
+  zhengyi:
+    platform: wsl2_cuda
+    accelerator: rtx_4090_laptop_12gb
+    config: configs/full_rt_zhengyi.yaml
+    train_seeds: [11, 23, 37]
+    stages: [ray_budget_convergence, sionna_explicit_array, point_training, grid_training, sionna_evaluation]
+  mac_studio:
+    platform: macos_apple_silicon
+    accelerator: mps
+    config: configs/full_rt_macstudio.yaml
+    train_seeds: [53, 71]
+    requires: [verified_sionna_train_shard]
+    stages: [deepmimo_download, deepmimo_preprocess, point_training, grid_training, external_evaluation, statistics, figures]
+  local_mac:
+    platform: macos_apple_silicon
+    accelerator: mps
+    stages: [physics_probes, shard_audit, manuscript_build, github_release, overleaf_build]
+merge_policy:
+  require_cache_sha256: true
+  reject_conflicting_cache_hash: true
+  rewrite_remote_absolute_paths: true
+  preserve_raw_metrics: true
+  require_disjoint_train_seeds: true
+  combined_train_seeds: [11, 23, 37, 53, 71]

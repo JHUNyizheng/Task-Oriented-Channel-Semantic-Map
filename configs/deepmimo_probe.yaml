@@ -1,0 +1,50 @@
+run:
+  name: deepmimo_probe
+  seed: 20260719
+  output_dir: outputs/deepmimo_probe_run
+  resume: true
+  device: cpu
+  train_steps: 2
+  train_seeds: [11]
+  eval_seeds: [101]
+data:
+  grid_size: 7
+  cell_size_m: 2.0
+  support_counts: [1, 8]
+  sampling_modes: [scatter]
+  sionna:
+    enabled: false
+    scenes: [simple_street_canyon]
+    configs_per_split: {train: 1, id: 0, geometry_ood: 0, system_ood: 0, compound_ood: 0}
+    train_frequencies_ghz: [28]
+    train_arrays: [16]
+    ood_frequencies_ghz: [60]
+    ood_arrays: [24]
+    max_depth: 2
+    samples_per_source: 20000
+    diffuse_reflection: false
+    channel_mode: explicit_array
+    explicit_batch_size: 16
+    explicit_validation_points_per_scene: 2
+  deepmimo:
+    enabled: true
+    scenarios: [city_0_newyork_28]
+    all_active_receivers: true
+    all_transmitters: true
+    max_paths: 3
+model:
+  hidden: 32
+  local_neighbors: 4
+  far_beams: 17
+  near_angles: 17
+  near_ranges: 5
+  baselines: [knn, idw, gated_hlg]
+system:
+  tx_power_dbm: 30.0
+  bandwidth_hz: 100000000.0
+  noise_figure_db: 7.0
+  regime_low_margin_bps_hz: 0.20
+  regime_high_margin_bps_hz: 0.75
+statistics:
+  bootstrap_samples: 100
+  confidence: 0.95
