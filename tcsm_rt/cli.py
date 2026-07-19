@@ -12,6 +12,7 @@ from .case_studies import generate_case_studies
 from .config import load_config
 from .evaluation import evaluate_models
 from .diagnostics import profile_models, run_robustness, run_threshold_sensitivity
+from .external_audit import audit_deepmimo_external
 from .pipeline import (
     _output_root,
     prepare_deepmimo,
@@ -39,6 +40,7 @@ def _parser() -> argparse.ArgumentParser:
         "threshold-sensitivity",
         "robustness",
         "profile",
+        "deepmimo-audit",
         "cases",
         "run",
         "audit",
@@ -113,6 +115,8 @@ def main() -> None:
             result = run_robustness(config, _output_root(config))
         elif args.command == "profile":
             result = profile_models(config, _output_root(config))
+        elif args.command == "deepmimo-audit":
+            result = audit_deepmimo_external(_output_root(config))
         elif args.command == "cases":
             result = generate_case_studies(config, _output_root(config))
         elif args.command == "run":

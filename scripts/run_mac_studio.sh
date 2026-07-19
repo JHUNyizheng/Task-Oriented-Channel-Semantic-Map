@@ -30,6 +30,8 @@ system_profiler SPHardwareDataType > logs/hardware_macstudio.txt
 .venv/bin/python -m pytest | tee logs/tests_macstudio.txt
 .venv/bin/python -m tcsm_rt.cli prepare-deepmimo --config configs/full_rt_macstudio.yaml \
   | tee logs/prepare_deepmimo_macstudio.json
+.venv/bin/python -m tcsm_rt.cli deepmimo-audit --config configs/full_rt_macstudio.yaml \
+  | tee logs/deepmimo_external_audit_macstudio.json
 
 if [[ -z "$SIONNA_TRAIN_SHARD" ]]; then
   printf '%s\n' \
