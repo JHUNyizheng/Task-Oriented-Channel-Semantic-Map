@@ -22,7 +22,10 @@ def _load_rows(root: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def _load_evidence(source: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def _load_evidence(
+    source: Path,
+    expected_material_count: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     candidates = {
         "audit": (source / "source_audit_report.json", source / "audit_report.json"),
         "material": (
@@ -44,15 +47,26 @@ def _load_evidence(source: Path) -> tuple[dict[str, Any], dict[str, Any], dict[s
         raise ValueError("source Sionna run audit does not pass")
     if not loaded["material"].get("passed", False):
         raise ValueError("source material-frequency audit does not pass")
-    if int(loaded["material"].get("scene_metadata_count", -1)) != 96:
-        raise ValueError("source material-frequency audit must cover all 96 Sionna scenes")
+    if int(loaded["material"].get("scene_metadata_count", -1)) != expected_material_count:
+        raise ValueError(
+            "source material-frequency audit must cover all "
+            f"{expected_material_count} selected Sionna configurations"
+        )
     if int(loaded["budget"].get("selected_samples_per_source", -1)) <= 0:
         raise ValueError("source ray-budget selection is invalid")
     return loaded["audit"], loaded["material"], loaded["budget"]
 
 
-def stage_training_shard(source: Path, destination: Path, expected_count: int) -> dict[str, Any]:
-    source_audit, material_audit, budget_report = _load_evidence(source)
+def stage_training_shard(
+    source: Path,
+    destination: Path,
+    expected_count: int,
+    expected_material_count: int = 96,
+) -> dict[str, Any]:
+    source_audit, material_audit, budget_report = _load_evidence(
+        source,
+        expected_material_count,
+    )
     selected_budget = int(budget_report["selected_samples_per_source"])
     source_rows = [row for row in _load_rows(source) if row.get("split") == "train"]
     if len(source_rows) != expected_count:
@@ -142,10 +156,20 @@ def _validate_archive_member(member: tarfile.TarInfo) -> None:
         raise ValueError(f"unsupported member in training shard: {member.name}")
 
 
-def stage_training_input(source: Path, destination: Path, expected_count: int) -> dict[str, Any]:
+def stage_training_input(
+    source: Path,
+    destination: Path,
+    expected_count: int,
+    expected_material_count: int = 96,
+) -> dict[str, Any]:
     """Stage a verified shard directory or its packaged ``tar.gz`` archive."""
     if source.is_dir():
-        return stage_training_shard(source, destination, expected_count)
+        return stage_training_shard(
+            source,
+            destination,
+            expected_count,
+            expected_material_count,
+        )
     if not source.is_file():
         raise FileNotFoundError(source)
 
@@ -157,7 +181,12 @@ def stage_training_input(source: Path, destination: Path, expected_count: int) -
             for member in members:
                 _validate_archive_member(member)
             archive.extractall(extracted, members=members, filter="data")
-        manifest = stage_training_shard(extracted, destination, expected_count)
+        manifest = stage_training_shard(
+            extracted,
+            destination,
+            expected_count,
+            expected_material_count,
+        )
 
     manifest["source"] = str(source.resolve())
     manifest["source_archive_sha256"] = archive_hash
@@ -170,11 +199,13 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--expected-count", type=int, default=32)
+    parser.add_argument("--expected-material-count", type=int, default=96)
     args = parser.parse_args()
     result = stage_training_input(
         args.source.resolve(),
         args.destination.resolve(),
         args.expected_count,
+        args.expected_material_count,
     )
     print(json.dumps(result, indent=2))
 

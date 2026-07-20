@@ -69,7 +69,8 @@ fi
 .venv/bin/python scripts/stage_training_shard.py \
   --source "$SIONNA_TRAIN_SHARD" \
   --destination outputs/macstudio_deepmimo \
-  --expected-count 32 \
+  --expected-count 18 \
+  --expected-material-count 66 \
   | tee logs/stage_training_shard_macstudio.json
 .venv/bin/python -m tcsm_rt.cli train-point --config configs/full_rt_macstudio.yaml \
   | tee logs/train_point_macstudio.json

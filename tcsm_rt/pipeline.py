@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 from .audit import audit_run, audit_training_label_coverage
@@ -50,7 +51,40 @@ def write_manifests(config: dict[str, Any]) -> Path:
     write_json_atomic(root / "environment_manifest.json", environment_manifest(config))
     records = [record.__dict__ for record in sionna_configuration_manifest(config)]
     write_json_atomic(root / "sionna_configuration_manifest.json", records)
+    selection_name = config["data"].get("sionna", {}).get("selection_manifest")
+    if selection_name:
+        selection_path = Path(config["_config_path"]).parent / str(selection_name)
+        selection = json.loads(selection_path.read_text(encoding="utf-8"))
+        write_json_atomic(root / "core66_selection.json", selection)
     return root
+
+
+def _select_sionna_records(
+    records: Sequence[Any],
+    record_start: int | None = None,
+    record_stop: int | None = None,
+    record_indices: Sequence[int] | None = None,
+) -> list[Any]:
+    if record_indices is not None:
+        if record_start is not None or record_stop is not None:
+            raise ValueError("record indices cannot be combined with a record interval")
+        indices = [int(index) for index in record_indices]
+        if not indices:
+            raise ValueError("record indices must not be empty")
+        if len(indices) != len(set(indices)):
+            raise ValueError("record indices must be unique")
+        invalid = [index for index in indices if index < 0 or index >= len(records)]
+        if invalid:
+            raise ValueError(f"Sionna record indices out of range: {invalid}")
+        return [records[index] for index in indices]
+
+    start = 0 if record_start is None else int(record_start)
+    stop = len(records) if record_stop is None else int(record_stop)
+    if start < 0 or stop > len(records) or start >= stop:
+        raise ValueError(
+            f"invalid Sionna record interval [{start}, {stop}) for {len(records)} records"
+        )
+    return list(records[start:stop])
 
 
 def prepare_sionna(
@@ -58,20 +92,19 @@ def prepare_sionna(
     limit: int | None = None,
     record_start: int | None = None,
     record_stop: int | None = None,
+    record_indices: Sequence[int] | None = None,
 ) -> list[dict[str, Any]]:
     root = write_manifests(config)
     cache_dir = root / "scenes"
     cache_dir.mkdir(parents=True, exist_ok=True)
     rows = _load_index(root)
     existing = {str(row["cache"]): row for row in rows}
-    records = sionna_configuration_manifest(config)
-    start = 0 if record_start is None else int(record_start)
-    stop = len(records) if record_stop is None else int(record_stop)
-    if start < 0 or stop > len(records) or start >= stop:
-        raise ValueError(
-            f"invalid Sionna record interval [{start}, {stop}) for {len(records)} records"
-        )
-    records = records[start:stop]
+    records = _select_sionna_records(
+        sionna_configuration_manifest(config),
+        record_start=record_start,
+        record_stop=record_stop,
+        record_indices=record_indices,
+    )
     if limit is not None:
         records = records[:limit]
     completion: list[dict[str, Any]] = []

@@ -53,7 +53,12 @@ def audit_training_label_coverage(
             errors.append(f"{Path(row['cache']).stem}: environment feature count is not 10")
         if not np.all(arrays["environment"][valid, 9] > 0.5):
             errors.append(f"{Path(row['cache']).stem}: Sionna environment modality is unavailable")
-    expected_scenes = int(config["data"]["sionna"]["configs_per_split"]["train"])
+    expected_scenes = int(
+        config["data"]["sionna"].get(
+            "expected_training_configurations",
+            config["data"]["sionna"]["configs_per_split"]["train"],
+        )
+    )
     if len(train_rows) != expected_scenes:
         errors.append(f"training scene count is {len(train_rows)}, expected {expected_scenes}")
     if valid_points == 0:

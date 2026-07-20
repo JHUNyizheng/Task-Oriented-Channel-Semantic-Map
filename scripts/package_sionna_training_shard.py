@@ -18,7 +18,12 @@ def _json_member(archive: tarfile.TarFile, name: str, payload: Any) -> None:
     archive.addfile(member, io.BytesIO(content))
 
 
-def package_training_shard(run_dir: Path, output: Path, expected_count: int) -> dict[str, Any]:
+def package_training_shard(
+    run_dir: Path,
+    output: Path,
+    expected_count: int,
+    expected_material_count: int = 96,
+) -> dict[str, Any]:
     required = {
         "audit": run_dir / "audit_report.json",
         "material": run_dir / "material_frequency_audit.json",
@@ -33,8 +38,13 @@ def package_training_shard(run_dir: Path, output: Path, expected_count: int) -> 
     budget = json.loads(required["budget"].read_text(encoding="utf-8"))
     if not audit.get("passed", False):
         raise ValueError("Sionna run audit does not pass")
-    if not material.get("passed", False) or int(material.get("scene_metadata_count", -1)) != 96:
-        raise ValueError("material-frequency audit must pass for all 96 scenes")
+    if not material.get("passed", False) or int(
+        material.get("scene_metadata_count", -1)
+    ) != expected_material_count:
+        raise ValueError(
+            "material-frequency audit must pass for all "
+            f"{expected_material_count} selected Sionna configurations"
+        )
     selected_budget = int(budget.get("selected_samples_per_source", -1))
     if selected_budget <= 0:
         raise ValueError("selected ray budget is invalid")
@@ -76,6 +86,7 @@ def package_training_shard(run_dir: Path, output: Path, expected_count: int) -> 
 
     shard_manifest = {
         "training_scene_count": len(normalized_rows),
+        "source_configuration_count": expected_material_count,
         "selected_samples_per_source": selected_budget,
         "source_audit_sha256": sha256_file(required["audit"]),
         "source_material_audit_sha256": sha256_file(required["material"]),
@@ -107,6 +118,7 @@ def main() -> None:
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--expected-count", type=int, default=32)
+    parser.add_argument("--expected-material-count", type=int, default=96)
     args = parser.parse_args()
     print(
         json.dumps(
@@ -114,6 +126,7 @@ def main() -> None:
                 args.run_dir.resolve(),
                 args.output.resolve(),
                 args.expected_count,
+                args.expected_material_count,
             ),
             indent=2,
         )

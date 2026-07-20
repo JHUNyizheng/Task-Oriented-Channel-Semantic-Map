@@ -13,13 +13,20 @@ def _rows(path: Path) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
-def merge_scene_shard(source: Path, destination: Path) -> list[dict[str, Any]]:
+def merge_scene_shard(
+    source: Path,
+    destination: Path,
+    allowed_config_ids: set[str] | None = None,
+) -> list[dict[str, Any]]:
     source_rows = _rows(source / "scene_index.json")
     destination_rows = _rows(destination / "scene_index.json")
     by_name = {Path(row["cache"]).name: row for row in destination_rows}
     destination_scenes = destination / "scenes"
     destination_scenes.mkdir(parents=True, exist_ok=True)
     for source_row in source_rows:
+        config_id = str(source_row.get("config_id") or Path(source_row["cache"]).stem)
+        if allowed_config_ids is not None and config_id not in allowed_config_ids:
+            continue
         source_cache = Path(source_row["cache"])
         if not source_cache.exists():
             source_cache = source / "scenes" / source_cache.name

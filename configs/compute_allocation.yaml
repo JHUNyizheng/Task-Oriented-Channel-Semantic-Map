@@ -1,5 +1,15 @@
-schema_version: 1
+schema_version: 2
 evidence_run: tcsm_rt_full_2026
+selection:
+  protocol: configs/core66_protocol.yaml
+  manifest: configs/core66_selection.json
+  declared_records: 96
+  primary_core_records: 66
+  reserve_records: 30
+  primary_split_counts: {train: 18, id: 12, geometry_ood: 12, system_ood: 12, compound_ood: 12}
+  reserve_policy: conditional_only_after_frozen_core66_analysis
+  completed_when_protocol_frozen: [0, 32, 64, 65, 66, 67, 81]
+  active_when_protocol_frozen: [1, 33, 68, 82]
 workers:
   zhengyi:
     platform: wsl2_cuda
@@ -7,15 +17,35 @@ workers:
     rt_backend: llvm_ad_mono_polarized
     training_backend: cuda
     config: configs/full_rt_zhengyi.yaml
+    legacy_live_interval: [0, 32]
+    core_record_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 27, 28, 29]
     train_seeds: [11, 23, 37]
     stages: [ray_budget_convergence, sionna_explicit_array, point_training, grid_training, sionna_evaluation]
+  zhengyi_b:
+    platform: wsl2_cpu
+    accelerator: rtx_4000_ada_generation_laptop
+    rt_backend: llvm_ad_mono_polarized
+    config: configs/full_rt_zhengyi.yaml
+    legacy_live_interval: [32, 64]
+    core_record_indices: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 53]
+    stages: [sionna_explicit_array]
   mac_studio:
     platform: macos_apple_silicon
     accelerator: mps
-    config: configs/full_rt_macstudio.yaml
+    rt_config: configs/full_rt_zhengyi.yaml
+    training_config: configs/full_rt_macstudio.yaml
+    legacy_live_interval: [66, 81]
+    core_record_indices: [54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75]
     train_seeds: [53, 71]
-    requires: [verified_sionna_train_shard]
-    stages: [deepmimo_download, deepmimo_preprocess, point_training, grid_training, external_evaluation, statistics, figures]
+    requires: [explicit_array_benchmark_passed, verified_sionna_train_shard]
+    stages: [sionna_explicit_array, deepmimo_download, deepmimo_preprocess, point_training, grid_training, external_evaluation, statistics, figures]
+  mac_studio_c2:
+    platform: macos_apple_silicon
+    accelerator: mps
+    rt_config: configs/full_rt_zhengyi.yaml
+    legacy_live_interval: [81, 96]
+    core_record_indices: [57, 58, 59, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91]
+    stages: [sionna_explicit_array]
   local_mac:
     platform: macos_apple_silicon
     accelerator: mps
@@ -26,4 +56,8 @@ merge_policy:
   rewrite_remote_absolute_paths: true
   preserve_raw_metrics: true
   require_disjoint_train_seeds: true
+  require_disjoint_sionna_records: true
+  required_primary_sionna_records: 66
+  conditional_reserve_records: 30
+  preserve_declared_96_record_ids: true
   combined_train_seeds: [11, 23, 37, 53, 71]

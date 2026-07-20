@@ -23,6 +23,9 @@ data:
       - etoile
       - san_francisco
     configs_per_split: {train: 32, id: 16, geometry_ood: 16, system_ood: 16, compound_ood: 16}
+    expected_training_configurations: 18
+    selection_protocol: core66_protocol.yaml
+    selection_manifest: core66_selection.json
     train_frequencies_ghz: [28, 39]
     train_arrays: [64, 128]
     ood_frequencies_ghz: [60, 73]

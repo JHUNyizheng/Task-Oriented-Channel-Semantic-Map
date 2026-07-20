@@ -58,9 +58,33 @@ def _parser() -> argparse.ArgumentParser:
         if name == "prepare-sionna":
             command.add_argument("--record-start", type=int)
             command.add_argument("--record-stop", type=int)
+            selection = command.add_mutually_exclusive_group()
+            selection.add_argument(
+                "--record-indices",
+                help="comma-separated indices into the unchanged full Sionna manifest",
+            )
+            selection.add_argument(
+                "--record-index-file",
+                type=Path,
+                help="JSON list or Core-66 selection manifest",
+            )
         if name == "run":
             command.add_argument("--resume", action="store_true")
     return parser
+
+
+def _record_indices(args: argparse.Namespace) -> list[int] | None:
+    if getattr(args, "record_indices", None):
+        return [int(value.strip()) for value in args.record_indices.split(",") if value.strip()]
+    path = getattr(args, "record_index_file", None)
+    if path is None:
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        return [int(value) for value in payload]
+    if isinstance(payload, dict) and isinstance(payload.get("core_record_indices"), list):
+        return [int(value) for value in payload["core_record_indices"]]
+    raise ValueError("record-index-file must contain a list or core_record_indices")
 
 
 def doctor(config_path: str) -> dict:
@@ -111,6 +135,7 @@ def main() -> None:
                 limit=args.limit,
                 record_start=args.record_start,
                 record_stop=args.record_stop,
+                record_indices=_record_indices(args),
             )
         elif args.command == "prepare-deepmimo":
             result = prepare_deepmimo(config, limit_scenarios=args.limit)

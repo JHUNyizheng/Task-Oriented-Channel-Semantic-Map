@@ -31,14 +31,26 @@ tcsm-rt deepmimo-audit --config configs/full_rt.yaml
 tcsm-rt cases --config configs/full_rt.yaml
 ```
 
-Full training starts only after `training_label_coverage.json` confirms all 32 declared Sionna
-training configurations, non-collapsed near/cross/far labels, populated environment modalities,
-and usable task-codebook coverage. The pipeline stops on failure instead of silently rebalancing
-the benchmark.
+The immutable generator still declares 96 configurations so completed cache IDs and hashes remain
+valid. The submission protocol uses a preregistered 66-configuration core: 18 train and 12 each for
+ID, geometry OOD, system OOD and compound OOD. The other 30 records are a conditional reserve and
+cannot enter the primary analysis unless a gate in `configs/core66_protocol.yaml` is triggered.
+Build and verify the machine-readable selection before launching a sparse queue:
+
+```bash
+python scripts/build_core66_selection.py
+tcsm-rt prepare-sionna --config configs/full_rt_zhengyi.yaml \
+  --record-index-file configs/core66_selection.json
+```
+
+`--record-indices 2,3,4` may be used for a worker-specific queue. Explicit indices and the legacy
+half-open interval flags are mutually exclusive. Full training starts only after
+`training_label_coverage.json` confirms all 18 core training configurations, non-collapsed
+near/cross/far labels, populated environment modalities and usable task-codebook coverage.
 
 The distributed allocation is recorded in `configs/compute_allocation.yaml`. `ZHENGYI` runs
 Sionna explicit-array generation and training seeds 11, 23 and 37. Mac Studio handles both full
-DeepMIMO cities and delegated training seeds 53 and 71 after importing the 32 Sionna training
+DeepMIMO cities and delegated training seeds 53 and 71 after importing the 18 core Sionna training
 caches through `scripts/stage_training_shard.py`. It accepts the packaged `.tar.gz` directly;
 the importer safely extracts the archive, rejects links/path traversal, and verifies every SHA-256
 digest and excludes all Sionna evaluation splits from the Mac worker. The two workers therefore
@@ -54,18 +66,19 @@ merger requires all 12 model configurations for seeds 53 and 71 and verifies the
 The Mac worker skips the four Sionna-backend tests only when its host lacks a usable LLVM/CUDA RT
 backend; ZHENGYI and GitHub CI continue to run the complete test set.
 
-On a CPU ray-tracing backend, `scripts/run_zhengyi_sharded_full.sh` partitions the 96 Sionna
-records into three disjoint intervals. Each worker writes an independent output directory; the
-coordinator waits for all workers, verifies hashes during merge, requires exactly 96 caches, and
-only then starts model training. `--record-start` and `--record-stop` use a half-open interval and
-preserve the configuration IDs from the full manifest.
+`scripts/run_zhengyi_sharded_full.sh` is retained as the legacy 96-record launcher and is not the
+submission protocol. Core-66 workers use the explicit queues in `configs/compute_allocation.yaml`.
+Each worker writes an independent output directory; completed legacy-interval workers stop at a
+cache boundary before the explicit queue starts. The merger accepts exactly the 66 selected cache
+IDs, verifies every SHA-256 digest and rejects any undeclared reserve cache from the primary run.
+The full $35\times35$ query grid, 500,000-ray budget, six scene templates, all frequency-array
+cells, five training/evaluation seeds and published baselines remain unchanged.
 
-If a shard is restarted after a worker-specific failure,
-`scripts/continue_zhengyi_after_shards.sh` waits for the three worker PIDs, audits the ITU material
-frequency metadata, merges only complete 32-cache shards, and then starts training. The metadata
-auditor may repair missing records only when every material was inside its documented validity
-range during generation. A cache that required a boundary-held material must have applied the
-policy before ray tracing and cannot be repaired retrospectively.
+If a shard is restarted after a worker-specific failure, its process, log and existing cache hashes
+are recorded before a non-overlapping explicit queue is resumed. The metadata auditor may repair
+missing records only when every material was inside its documented validity range during
+generation. A cache that required a boundary-held material must have applied the policy before ray
+tracing and cannot be repaired retrospectively.
 
 DeepMIMO evaluation uses contiguous coordinate stripes. The nearest 60% of valid receivers are
 support candidates, the next 20% form a spatial-ID region, and the furthest 20% form a spatial
