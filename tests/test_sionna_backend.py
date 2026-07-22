@@ -5,9 +5,16 @@ import subprocess
 import sys
 
 import mitsuba as mi
+import numpy as np
 import pytest
 
-from tcsm_rt.data.sionna_adapter import _configure_itu_material_frequency
+from tcsm_rt.data.common import RTConfiguration, grid_xyz
+from tcsm_rt.data.sionna_adapter import (
+    _configure_itu_material_frequency,
+    _geometry_features,
+    _object_footprints,
+    _placement,
+)
 
 
 def test_explicit_platform_variant_is_selected_before_sionna_import() -> None:
@@ -82,3 +89,27 @@ def test_itu_material_boundary_is_evaluated_without_scene_callback_error() -> No
     assert records["marble"]["clamped"] is False
     assert records["brick"]["evaluation_frequency_ghz"] == 40.0
     assert records["brick"]["clamped"] is True
+
+
+def test_san_francisco_terrain_is_not_treated_as_building_occupancy() -> None:
+    import sionna.rt
+    from sionna.rt import load_scene
+
+    scene = load_scene(sionna.rt.scene.san_francisco, merge_shapes=False)
+    footprints = _object_footprints(scene)
+    record = RTConfiguration(
+        config_id="sionna_compound_ood_002",
+        source="sionna_rt_2.0.1",
+        scene="san_francisco",
+        split="compound_ood",
+        frequency_hz=60e9,
+        array_size=96,
+        placement_index=0,
+        seed=1272473381,
+    )
+    _, center = _placement(scene, record, grid_size=35, cell_size_m=2.0, footprints=footprints)
+    query_xyz = grid_xyz(center, grid_size=35, cell_size_m=2.0)
+    occupied, _ = _geometry_features(query_xyz, footprints)
+
+    assert len(footprints) > 1000
+    assert int(np.sum(occupied < 0.5)) >= 2
