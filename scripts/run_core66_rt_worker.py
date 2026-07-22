@@ -6,6 +6,7 @@ import os
 import platform
 import subprocess
 import sys
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -138,6 +139,7 @@ def main() -> None:
         return
 
     lock = output_dir / ".core66_worker.lock"
+    log_path = output_dir / f"core66_{args.worker}.jsonl"
     try:
         descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError as error:
@@ -145,6 +147,8 @@ def main() -> None:
     try:
         os.write(descriptor, json.dumps(launch, indent=2).encode("utf-8"))
         os.close(descriptor)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"event": "start", **launch}) + "\n")
         os.environ["TCSM_OUTPUT_DIR"] = str(output_dir)
         os.environ["TCSM_SAMPLES_PER_SOURCE"] = str(args.samples_per_source)
         from tcsm_rt.config import load_config
@@ -152,6 +156,31 @@ def main() -> None:
 
         config = load_config(root / "configs" / "full_rt_zhengyi.yaml")
         prepare_sionna(config, record_indices=remaining)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "event": "complete",
+                        "completed_at": datetime.now(timezone.utc).isoformat(),
+                        "record_indices": remaining,
+                    }
+                )
+                + "\n"
+            )
+    except Exception as error:
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "event": "error",
+                        "failed_at": datetime.now(timezone.utc).isoformat(),
+                        "error": repr(error),
+                        "traceback": traceback.format_exc(),
+                    }
+                )
+                + "\n"
+            )
+        raise
     finally:
         lock.unlink(missing_ok=True)
 
