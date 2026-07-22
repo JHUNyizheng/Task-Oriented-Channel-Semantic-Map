@@ -18,7 +18,7 @@ workers:
     training_backend: cuda
     config: configs/full_rt_zhengyi.yaml
     legacy_live_interval: [0, 32]
-    core_record_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 27, 28, 29]
+    core_record_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 27, 28, 29, 54, 55, 56, 74, 75, 80, 82, 83, 84]
     train_seeds: [11, 23, 37]
     stages: [ray_budget_convergence, sionna_explicit_array, point_training, grid_training, sionna_evaluation]
   zhengyi_b:
@@ -27,7 +27,7 @@ workers:
     rt_backend: llvm_ad_mono_polarized
     config: configs/full_rt_zhengyi.yaml
     legacy_live_interval: [32, 64]
-    core_record_indices: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 53]
+    core_record_indices: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 53, 57, 58, 59, 85, 86, 87, 88, 89, 90, 91]
     stages: [sionna_explicit_array]
   mac_studio:
     platform: macos_apple_silicon
@@ -35,7 +35,7 @@ workers:
     rt_config: configs/full_rt_zhengyi.yaml
     training_config: configs/full_rt_macstudio.yaml
     legacy_live_interval: [66, 81]
-    core_record_indices: [54, 55, 56, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75]
+    core_record_indices: [64, 65, 66, 67, 68, 69, 70, 71, 72, 73]
     train_seeds: [53, 71]
     requires: [explicit_array_benchmark_passed, verified_sionna_train_shard]
     stages: [sionna_explicit_array, deepmimo_download, deepmimo_preprocess, point_training, grid_training, external_evaluation, statistics, figures]
@@ -44,12 +44,19 @@ workers:
     accelerator: mps
     rt_config: configs/full_rt_zhengyi.yaml
     legacy_live_interval: [81, 96]
-    core_record_indices: [57, 58, 59, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91]
+    core_record_indices: [81]
     stages: [sionna_explicit_array]
   local_mac:
     platform: macos_apple_silicon
     accelerator: mps
     stages: [physics_probes, shard_audit, manuscript_build, github_release, overleaf_build]
+runtime_reallocation:
+  date: 2026-07-22
+  reason: macos_llvm_runtime_lost_after_verified_cache_boundary
+  evidence: experiments/sionna_deepmimo_full/logs/core66_audit_20260722/audit.md
+  policy: preserve_completed_mac_hashes_and_delegate_only_missing_core_ids
+  mac_rt_completed_record_indices: [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 81]
+  reserve_records_activated: false
 merge_policy:
   require_cache_sha256: true
   reject_conflicting_cache_hash: true
