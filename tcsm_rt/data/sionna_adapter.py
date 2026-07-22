@@ -177,8 +177,11 @@ def _placement(
 
 
 def _object_footprints(scene: Any) -> list[tuple[np.ndarray, np.ndarray]]:
+    scene_lower, scene_upper = _bbox(scene)
+    scene_xy_area = float(np.prod(np.maximum(scene_upper[:2] - scene_lower[:2], 0.0)))
+    background_names = {"terrain", "ground", "floor", "plane"}
     footprints: list[tuple[np.ndarray, np.ndarray]] = []
-    for obj in scene.objects.values():
+    for name, obj in scene.objects.items():
         try:
             bounds = obj.mi_mesh.bbox()
             lower = _to_numpy(bounds.min).astype(np.float64).reshape(3)
@@ -186,8 +189,17 @@ def _object_footprints(scene: Any) -> list[tuple[np.ndarray, np.ndarray]]:
         except (AttributeError, TypeError, ValueError):
             continue
         height = upper[2] - lower[2]
-        if np.all(np.isfinite(lower)) and np.all(np.isfinite(upper)) and height >= 2.0:
-            footprints.append((lower, upper))
+        if not (np.all(np.isfinite(lower)) and np.all(np.isfinite(upper)) and height >= 2.0):
+            continue
+        normalized_name = str(name).lower()
+        if normalized_name in background_names:
+            continue
+        object_xy_area = float(np.prod(np.maximum(upper[:2] - lower[:2], 0.0)))
+        # Large terrain meshes can have a tall bounding box on sloped city scenes.
+        # Treating that box as a solid building invalidates every receiver location.
+        if scene_xy_area > 0.0 and object_xy_area / scene_xy_area > 0.10:
+            continue
+        footprints.append((lower, upper))
     return footprints
 
 
