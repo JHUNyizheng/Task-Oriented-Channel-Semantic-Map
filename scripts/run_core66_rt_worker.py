@@ -73,6 +73,11 @@ def _configure_backend() -> dict[str, str]:
         failures: dict[str, str] = {}
         for candidate in candidates:
             try:
+                cxx_dir = candidate.parent / "c++"
+                for dependency in ("libc++abi.1.dylib", "libc++.1.dylib"):
+                    dependency_path = cxx_dir / dependency
+                    if dependency_path.exists():
+                        ctypes.CDLL(str(dependency_path), mode=ctypes.RTLD_GLOBAL)
                 ctypes.CDLL(str(candidate))
             except OSError as error:
                 failures[str(candidate)] = str(error)
