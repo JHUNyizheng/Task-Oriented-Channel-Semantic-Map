@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import platform
@@ -62,12 +63,28 @@ def _configure_backend() -> dict[str, str]:
     report = {"mitsuba_variant": os.environ["TCSM_MITSUBA_VARIANT"]}
     if platform.system() == "Darwin" and not os.environ.get("DRJIT_LIBLLVM_PATH"):
         stable = Path("/opt/homebrew/opt/llvm@20/lib/libLLVM.dylib")
-        candidates = [stable] if stable.exists() else []
-        if not candidates:
+        runtime = Path.home() / "Projects" / "Radio2026" / "runtime" / "llvm20-bottle"
+        candidates = [
+            path
+            for path in [stable, *sorted(runtime.glob("**/libLLVM.dylib"))]
+            if path.exists()
+        ]
+        selected = None
+        failures: dict[str, str] = {}
+        for candidate in candidates:
+            try:
+                ctypes.CDLL(str(candidate))
+            except OSError as error:
+                failures[str(candidate)] = str(error)
+            else:
+                selected = candidate
+                break
+        if selected is None:
             raise RuntimeError(
-                "missing the pinned LLVM 20 backend; run scripts/bootstrap_mac_llvm.py"
+                "no loadable pinned LLVM 20 backend; run scripts/bootstrap_mac_llvm.py; "
+                f"failures={failures}"
             )
-        os.environ["DRJIT_LIBLLVM_PATH"] = str(stable)
+        os.environ["DRJIT_LIBLLVM_PATH"] = str(selected)
     if os.environ.get("DRJIT_LIBLLVM_PATH"):
         report["drjit_libllvm_path"] = os.environ["DRJIT_LIBLLVM_PATH"]
     return report
