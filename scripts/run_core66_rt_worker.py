@@ -61,10 +61,13 @@ def _configure_backend() -> dict[str, str]:
     os.environ.setdefault("TCSM_MITSUBA_VARIANT", "llvm_ad_mono_polarized")
     report = {"mitsuba_variant": os.environ["TCSM_MITSUBA_VARIANT"]}
     if platform.system() == "Darwin" and not os.environ.get("DRJIT_LIBLLVM_PATH"):
-        candidates = sorted(Path("/opt/homebrew").glob("**/libLLVM.dylib"))
+        stable = Path("/opt/homebrew/opt/llvm@20/lib/libLLVM.dylib")
+        candidates = [stable] if stable.exists() else []
         if not candidates:
-            raise RuntimeError("unable to locate libLLVM.dylib for the Dr.Jit LLVM backend")
-        os.environ["DRJIT_LIBLLVM_PATH"] = str(candidates[-1])
+            raise RuntimeError(
+                "missing the pinned LLVM 20 backend; run scripts/bootstrap_mac_llvm.py"
+            )
+        os.environ["DRJIT_LIBLLVM_PATH"] = str(stable)
     if os.environ.get("DRJIT_LIBLLVM_PATH"):
         report["drjit_libllvm_path"] = os.environ["DRJIT_LIBLLVM_PATH"]
     return report
