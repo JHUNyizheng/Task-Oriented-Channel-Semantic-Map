@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from scripts.run_core66_rt_worker import WORKERS
 from scripts.build_core66_selection import build_core66_selection
 from tcsm_rt.config import load_config
 from tcsm_rt.data.common import sionna_configuration_manifest
@@ -58,6 +59,21 @@ def test_checked_in_selection_matches_protocol() -> None:
         "validation",
     ):
         assert checked_in[key] == rebuilt[key]
+
+
+def test_rt_worker_allocations_cover_core_once_or_are_pending() -> None:
+    allocation = yaml.safe_load((ROOT / "configs/compute_allocation.yaml").read_text())
+    assigned: list[int] = []
+    for worker in WORKERS.values():
+        worker_ids = allocation["workers"][worker["allocation"]]["core_record_indices"]
+        assert len(worker_ids) == len(set(worker_ids))
+        assigned.extend(worker_ids)
+
+    checked_in = json.loads(
+        (ROOT / "configs/core66_selection.json").read_text(encoding="utf-8")
+    )
+    assert len(assigned) == len(set(assigned))
+    assert set(assigned) == set(checked_in["core_record_indices"])
 
 
 def test_sparse_record_selection_preserves_declared_order() -> None:
