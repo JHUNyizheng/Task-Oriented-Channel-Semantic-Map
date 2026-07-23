@@ -11,6 +11,7 @@ import numpy as np
 from tcsm_rt.config import load_config
 from tcsm_rt.data.common import grid_xyz, sionna_configuration_manifest
 from tcsm_rt.data.sionna_adapter import (
+    _configure_itu_material_frequency,
     _object_footprints,
     _placement,
     _scene_constant,
@@ -111,7 +112,16 @@ def main() -> None:
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     scene = load_scene(_scene_constant(record.scene), merge_shapes=False)
-    scene.frequency = float(record.frequency_hz)
+    _configure_itu_material_frequency(
+        scene,
+        float(record.frequency_hz),
+        str(
+            config["data"]["sionna"].get(
+                "material_frequency_policy",
+                "strict",
+            )
+        ),
+    )
     scene.tx_array = PlanarArray(
         num_rows=1,
         num_cols=1,
