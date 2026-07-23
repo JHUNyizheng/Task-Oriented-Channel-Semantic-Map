@@ -65,6 +65,11 @@ def test_itu_materials_use_documented_boundary_at_73_ghz() -> None:
     assert records["concrete"]["clamped"] is False
     assert scene.radio_materials["brick"].frequency_update_callback is None
     assert scene.radio_materials["marble"].frequency_update_callback is None
+    assert all(
+        material.frequency_update_callback is None
+        for material in scene.radio_materials.values()
+        if getattr(material, "itu_type", None) is not None
+    )
     assert dr.slice(scene.frequency) == pytest.approx(73e9, rel=1e-6)
 
 
