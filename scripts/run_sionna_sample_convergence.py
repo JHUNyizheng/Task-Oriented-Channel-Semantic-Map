@@ -70,37 +70,40 @@ def _comparison(
 ) -> dict[str, float | int]:
     reference_norm = np.linalg.norm(reference_channel, axis=1)
     estimate_norm = np.linalg.norm(channel, axis=1)
-    active = (reference_norm > 1e-15) & (estimate_norm > 1e-15)
+    reference_active = reference_norm > 1e-15
+    estimate_active = estimate_norm > 1e-15
+    active = reference_active & estimate_active
     correlation = channel_correlation(reference_channel[active], channel[active])
     rss_error = labels["rss_db"].astype(np.float64) - reference_labels["rss_db"].astype(np.float64)
+    oracle_error = np.abs(
+        labels["oracle_rate_bps_hz"].astype(np.float64)
+        - reference_labels["oracle_rate_bps_hz"].astype(np.float64)
+    )
+
+    def agreement(key: str) -> float:
+        return float(np.mean(labels[key][active] == reference_labels[key][active])) if np.any(active) else float("nan")
+
     return {
         "samples_per_source": sample_count,
         "runtime_s": runtime_s,
         "point_count": len(channel),
+        "reference_active_point_count": int(np.sum(reference_active)),
+        "estimate_active_point_count": int(np.sum(estimate_active)),
         "active_point_count": int(np.sum(active)),
+        "path_detection_agreement": float(np.mean(reference_active == estimate_active)),
+        "missed_active_point_count": int(np.sum(reference_active & ~estimate_active)),
+        "spurious_active_point_count": int(np.sum(~reference_active & estimate_active)),
         "median_channel_correlation": float(np.median(correlation)) if correlation.size else float("nan"),
         "p10_channel_correlation": float(np.quantile(correlation, 0.1)) if correlation.size else float("nan"),
-        "rss_rmse_db": float(np.sqrt(np.mean(rss_error**2))),
-        "oracle_rate_mae_bps_hz": float(
-            np.mean(
-                np.abs(
-                    labels["oracle_rate_bps_hz"].astype(np.float64)
-                    - reference_labels["oracle_rate_bps_hz"].astype(np.float64)
-                )
-            )
-        ),
-        "regime_agreement": float(np.mean(labels["regime"] == reference_labels["regime"])),
-        "far_label_agreement": float(
-            np.mean(labels["best_far_idx"] == reference_labels["best_far_idx"])
-        ),
-        "near_angle_agreement": float(
-            np.mean(labels["best_near_angle"] == reference_labels["best_near_angle"])
-        ),
-        "near_range_agreement": float(
-            np.mean(labels["best_near_range"] == reference_labels["best_near_range"])
-        ),
+        "rss_rmse_db": float(np.sqrt(np.mean(rss_error[active] ** 2))) if np.any(active) else float("nan"),
+        "rss_rmse_all_db": float(np.sqrt(np.mean(rss_error**2))),
+        "oracle_rate_mae_bps_hz": float(np.mean(oracle_error[active])) if np.any(active) else float("nan"),
+        "oracle_rate_mae_all_bps_hz": float(np.mean(oracle_error)),
+        "regime_agreement": agreement("regime"),
+        "far_label_agreement": agreement("best_far_idx"),
+        "near_angle_agreement": agreement("best_near_angle"),
+        "near_range_agreement": agreement("best_near_range"),
     }
-
 
 def main() -> None:
     from sionna.rt import PlanarArray, Transmitter, load_scene
