@@ -25,6 +25,10 @@ WORKERS = {
         "allocation": "zhengyi_b",
         "output": "outputs/zhengyi_sionna_shard_b",
     },
+    "zhengyi4090": {
+        "allocation": "zhengyi4090",
+        "output": "outputs/zhengyi4090_sionna",
+    },
     "mac-c1": {
         "allocation": "mac_studio",
         "output": "outputs/macstudio_sionna_shard_c1",
@@ -59,7 +63,12 @@ def _git_head(root: Path) -> str:
 
 
 def _configure_backend() -> dict[str, str]:
-    os.environ.setdefault("TCSM_MITSUBA_VARIANT", "llvm_ad_mono_polarized")
+    default_variant = (
+        "cuda_ad_mono_polarized"
+        if platform.system() == "Windows"
+        else "llvm_ad_mono_polarized"
+    )
+    os.environ.setdefault("TCSM_MITSUBA_VARIANT", default_variant)
     report = {"mitsuba_variant": os.environ["TCSM_MITSUBA_VARIANT"]}
     if platform.system() == "Darwin" and not os.environ.get("DRJIT_LIBLLVM_PATH"):
         stable = Path("/opt/homebrew/opt/llvm@20/lib/libLLVM.dylib")
