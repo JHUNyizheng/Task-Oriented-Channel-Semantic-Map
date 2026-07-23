@@ -29,6 +29,14 @@ workers:
     legacy_live_interval: [32, 64]
     core_record_indices: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 53, 57, 58, 59, 85, 86, 87, 88, 89, 90, 91]
     stages: [sionna_explicit_array]
+  zhengyi4090:
+    platform: wsl2_cpu
+    accelerator: dual_rtx_4090
+    rt_backend: llvm_ad_mono_polarized
+    config: configs/full_rt_zhengyi.yaml
+    activation_gate: after_zhengyi_records_2_and_34_reach_verified_cache_boundary
+    core_record_indices: []
+    stages: [sionna_explicit_array]
   mac_studio:
     platform: macos_apple_silicon
     accelerator: mps
@@ -56,6 +64,8 @@ runtime_reallocation:
   evidence: experiments/sionna_deepmimo_full/logs/core66_audit_20260722/audit.md
   policy: preserve_completed_mac_hashes_and_delegate_only_missing_core_ids
   mac_rt_completed_record_indices: [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 81]
+  pending_rt_worker: zhengyi4090
+  pending_worker_reason: wait_for_active_records_2_and_34_before_disjoint_reallocation
   reserve_records_activated: false
 merge_policy:
   require_cache_sha256: true
