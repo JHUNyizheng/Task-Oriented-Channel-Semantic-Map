@@ -50,6 +50,10 @@ def _configure_itu_material_frequency(
     material_records: list[dict[str, Any]] = []
     for name, material in sorted(scene.radio_materials.items()):
         itu_type = getattr(material, "itu_type", None)
+        # Some Sionna/Mitsuba builds reconstruct an ITU XML plugin as a
+        # generic radio material while retaining the canonical ITU name.
+        if itu_type is None and str(name) in ITU_MATERIALS_PROPERTIES:
+            itu_type = str(name)
         if itu_type is None:
             continue
         intervals = ITU_MATERIALS_PROPERTIES[str(itu_type)]
@@ -110,6 +114,21 @@ def _configure_itu_material_frequency(
                 "relative_permittivity": relative_permittivity,
                 "conductivity_s_m": conductivity_s_m,
             }
+        )
+    unfrozen_itu_materials = []
+    for name, material in sorted(scene.radio_materials.items()):
+        itu_type = getattr(material, "itu_type", None)
+        if itu_type is None and str(name) in ITU_MATERIALS_PROPERTIES:
+            itu_type = str(name)
+        if (
+            itu_type in ITU_MATERIALS_PROPERTIES
+            and getattr(material, "frequency_update_callback", None) is not None
+        ):
+            unfrozen_itu_materials.append(str(name))
+    if unfrozen_itu_materials:
+        raise RuntimeError(
+            "failed to freeze ITU frequency callbacks before updating the scene: "
+            f"{unfrozen_itu_materials}"
         )
     scene.frequency = float(requested_frequency_hz)
     return {
