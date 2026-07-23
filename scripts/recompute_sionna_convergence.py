@@ -67,8 +67,9 @@ def recompute(directory: Path) -> dict[str, object]:
     report = {
         "directory": str(directory),
         "metric_correction": (
-            "channel correlation divides by the measured norm product; only exact zero norms "
-            "are assigned zero correlation"
+            "channel correlation, RSS error, rate error and task-label agreement use the "
+            "active-path intersection; path-presence disagreement and all-point errors are "
+            "reported separately"
         ),
         "reference_samples_per_source": reference_count,
         "source_npz_sha256": {path.name: sha256_file(path) for path in files},
