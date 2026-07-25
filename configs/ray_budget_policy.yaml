@@ -1,0 +1,50 @@
+schema_version: 1
+policy_id: tcsm_frequency_stratified_ray_budget_v1
+amendment_date: 2026-07-25
+status: preregistered_before_primary_model_training
+
+scope:
+  core_selection_unchanged: true
+  reserve_records_activated: false
+  evidence_requires_budget_gate: true
+
+tiers:
+  low_frequency:
+    frequencies_hz: [28000000000, 39000000000]
+    selected_samples_per_source: 500000
+    status: accepted
+  high_frequency:
+    frequencies_hz: [60000000000, 73000000000]
+    selected_samples_per_source: null
+    status: pending_independent_4m_8m_confirmation
+    candidate_samples_per_source: 4000000
+    reference_samples_per_source: 8000000
+
+diagnostics:
+  record64:
+    scene: simple_street_canyon
+    frequency_hz: 60000000000
+    array_size: 96
+    output: outputs/benchmark4090-llvm-id64-v6
+  record71:
+    scene: munich
+    frequency_hz: 73000000000
+    array_size: 96
+    output: outputs/benchmark4090-llvm-id71-v2
+
+acceptance:
+  path_detection_agreement_min: 1.0
+  median_channel_correlation_min: 0.95
+  p10_channel_correlation_min: 0.90
+  active_rss_rmse_db_max: 1.0
+  oracle_rate_mae_bps_hz_max: 0.15
+  regime_agreement_min: 0.90
+  far_label_agreement_min: 0.90
+  near_angle_agreement_min: 0.90
+  near_range_agreement_min: 0.90
+
+provisional_cache_rule:
+  affected_record_indices: [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 81]
+  retain_raw_files: true
+  count_in_primary_evidence: false
+  required_action: regenerate_in_mutually_exclusive_outputs_at_selected_high_frequency_budget

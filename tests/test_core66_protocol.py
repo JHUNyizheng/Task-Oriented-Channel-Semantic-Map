@@ -76,6 +76,19 @@ def test_rt_worker_allocations_cover_core_once_or_are_pending() -> None:
     assert set(assigned) == set(checked_in["core_record_indices"])
 
 
+def test_frequency_stratified_reallocation_matches_manifest() -> None:
+    allocation = yaml.safe_load((ROOT / "configs/compute_allocation.yaml").read_text())
+    records = {record["record_index"]: record for record in _records()}
+    low = set(allocation["workers"]["zhengyi"]["core_record_indices"])
+    low.update(allocation["workers"]["zhengyi_b"]["core_record_indices"])
+    high = set(allocation["workers"]["zhengyi4090"]["core_record_indices"])
+
+    assert all(records[index]["frequency_hz"] in {28e9, 39e9} for index in low)
+    assert all(records[index]["frequency_hz"] in {60e9, 73e9} for index in high)
+    assert low.isdisjoint(high)
+    assert allocation["runtime_reallocation"]["reserve_records_activated"] is False
+
+
 def test_sparse_record_selection_preserves_declared_order() -> None:
     records = list(range(10))
     assert _select_sionna_records(records, record_indices=[7, 2, 5]) == [7, 2, 5]

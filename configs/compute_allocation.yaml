@@ -18,7 +18,8 @@ workers:
     training_backend: cuda
     config: configs/full_rt_zhengyi.yaml
     legacy_live_interval: [0, 32]
-    core_record_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 27, 28, 29, 54, 55, 56, 74, 75, 80, 82, 83, 84]
+    ray_budget_tier: low_frequency
+    core_record_indices: [0, 1, 2, 3, 5, 7, 9, 11, 13, 27, 29, 36, 38, 40, 42, 48, 50, 52, 54, 56, 58]
     train_seeds: [11, 23, 37]
     stages: [ray_budget_convergence, sionna_explicit_array, point_training, grid_training, sionna_evaluation]
   zhengyi_b:
@@ -27,15 +28,17 @@ workers:
     rt_backend: llvm_ad_mono_polarized
     config: configs/full_rt_zhengyi.yaml
     legacy_live_interval: [32, 64]
-    core_record_indices: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 48, 49, 50, 51, 52, 53, 57, 58, 59, 85, 86, 87, 88, 89, 90, 91]
+    ray_budget_tier: low_frequency
+    core_record_indices: [4, 6, 8, 10, 12, 14, 28, 32, 33, 34, 35, 37, 39, 41, 43, 49, 51, 53, 55, 57, 59]
     stages: [sionna_explicit_array]
   zhengyi4090:
     platform: wsl2_cpu
     accelerator: dual_rtx_4090
     rt_backend: llvm_ad_mono_polarized
     config: configs/full_rt_zhengyi.yaml
-    activation_gate: after_zhengyi_records_2_and_34_reach_verified_cache_boundary
-    core_record_indices: []
+    activation_gate: after_high_frequency_4m_8m_convergence_gate
+    ray_budget_tier: high_frequency
+    core_record_indices: [74, 75, 80, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91]
     stages: [sionna_explicit_array]
   mac_studio:
     platform: macos_apple_silicon
@@ -43,6 +46,7 @@ workers:
     rt_config: configs/full_rt_zhengyi.yaml
     training_config: configs/full_rt_macstudio.yaml
     legacy_live_interval: [66, 81]
+    ray_budget_tier: high_frequency_provisional_cache
     core_record_indices: [64, 65, 66, 67, 68, 69, 70, 71, 72, 73]
     train_seeds: [53, 71]
     requires: [explicit_array_benchmark_passed, verified_sionna_train_shard]
@@ -52,6 +56,7 @@ workers:
     accelerator: mps
     rt_config: configs/full_rt_zhengyi.yaml
     legacy_live_interval: [81, 96]
+    ray_budget_tier: high_frequency_provisional_cache
     core_record_indices: [81]
     stages: [sionna_explicit_array]
   local_mac:
@@ -59,13 +64,17 @@ workers:
     accelerator: mps
     stages: [physics_probes, shard_audit, manuscript_build, github_release, overleaf_build]
 runtime_reallocation:
-  date: 2026-07-22
-  reason: macos_llvm_runtime_lost_after_verified_cache_boundary
+  date: 2026-07-25
+  reason: frequency_stratified_budget_after_high_frequency_convergence_failure
   evidence: experiments/sionna_deepmimo_full/logs/core66_audit_20260722/audit.md
-  policy: preserve_completed_mac_hashes_and_delegate_only_missing_core_ids
+  policy: resume_low_frequency_workers_while_high_frequency_budget_is_independently_confirmed
   mac_rt_completed_record_indices: [64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 81]
+  mac_rt_cache_status: identity_and_finite_checks_passed_but_excluded_until_high_frequency_regeneration
+  verified_low_frequency_boundary_records: [0, 1, 2, 32, 33, 34]
+  low_frequency_samples_per_source: 500000
+  high_frequency_samples_per_source: pending_4m_8m_confirmation
   pending_rt_worker: zhengyi4090
-  pending_worker_reason: wait_for_active_records_2_and_34_before_disjoint_reallocation
+  pending_worker_reason: wait_for_record64_and_record71_4m_8m_gate
   reserve_records_activated: false
 merge_policy:
   require_cache_sha256: true
