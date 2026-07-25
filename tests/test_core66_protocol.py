@@ -78,7 +78,12 @@ def test_rt_worker_allocations_cover_core_once_or_are_pending() -> None:
 
 def test_frequency_stratified_reallocation_matches_manifest() -> None:
     allocation = yaml.safe_load((ROOT / "configs/compute_allocation.yaml").read_text())
-    records = {record["record_index"]: record for record in _records()}
+    checked_in = json.loads(
+        (ROOT / "configs/core66_selection.json").read_text(encoding="utf-8")
+    )
+    records = {
+        record["record_index"]: record for record in checked_in["core_records"]
+    }
     low = set(allocation["workers"]["zhengyi"]["core_record_indices"])
     low.update(allocation["workers"]["zhengyi_b"]["core_record_indices"])
     high = set(allocation["workers"]["zhengyi4090"]["core_record_indices"])
