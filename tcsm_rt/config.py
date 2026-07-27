@@ -44,6 +44,9 @@ def validate_config(config: dict[str, Any]) -> None:
     if int(config["model"]["near_angles"]) % 2 == 0:
         raise ValueError("near_angles must be odd so that broadside is represented")
     sionna = config["data"].get("sionna", {})
+    for key, default in (("path_batch_size", 64), ("explicit_batch_size", 16)):
+        if int(sionna.get(key, default)) <= 0:
+            raise ValueError(f"data.sionna.{key} must be positive")
     material_policy = str(sionna.get("material_frequency_policy", "strict"))
     if material_policy not in {"strict", "clamp_to_itu_range"}:
         raise ValueError(
