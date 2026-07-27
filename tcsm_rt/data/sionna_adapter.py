@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,8 +20,58 @@ from ..schema import save_scene
 from ..sionna_backend import configure_mitsuba_variant
 from .common import RTConfiguration, grid_xyz
 
-
 configure_mitsuba_variant()
+
+
+def _append_progress(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    event = {
+        "recorded_at": datetime.now(UTC).isoformat(),
+        **payload,
+    }
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, sort_keys=True) + "\n")
+        handle.flush()
+
+
+def _load_explicit_checkpoint(
+    path: Path,
+    signature: dict[str, Any],
+    expected_shape: tuple[int, int],
+) -> np.ndarray | None:
+    metadata_path = path.with_suffix(".json")
+    if not path.exists() or not metadata_path.exists():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("signature") != signature:
+            return None
+        with np.load(path, allow_pickle=False) as arrays:
+            channel = np.asarray(arrays["channel"], dtype=np.complex64)
+    except (OSError, KeyError, ValueError, json.JSONDecodeError):
+        return None
+    if channel.shape != expected_shape or not np.all(np.isfinite(channel)):
+        return None
+    return channel
+
+
+def _save_explicit_checkpoint(
+    path: Path,
+    signature: dict[str, Any],
+    channel: np.ndarray,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("wb") as handle:
+        np.savez_compressed(handle, channel=np.asarray(channel, dtype=np.complex64))
+    temporary.replace(path)
+    write_json_atomic(
+        path.with_suffix(".json"),
+        {
+            "signature": signature,
+            "cache_sha256": sha256_file(path),
+        },
+    )
 
 
 def _to_numpy(value: Any) -> np.ndarray:
@@ -481,6 +534,22 @@ def generate_sionna_scene(
     from sionna.rt import PlanarArray, Transmitter, load_scene  # type: ignore
 
     settings = config["data"]["sionna"]
+    generation_started = time.perf_counter()
+    output_path = Path(output_path)
+    output_root = output_path.parent.parent
+    progress_path = output_root / "progress" / f"{record.config_id}.jsonl"
+    explicit_checkpoint_dir = output_root / "scene_parts" / record.config_id
+    _append_progress(
+        progress_path,
+        {
+            "event": "record_start",
+            "config_id": record.config_id,
+            "scene": record.scene,
+            "frequency_hz": record.frequency_hz,
+            "array_size": record.array_size,
+            "samples_per_source": int(settings["samples_per_source"]),
+        },
+    )
     scene = load_scene(_scene_constant(record.scene), merge_shapes=False)
     material_frequency = _configure_itu_material_frequency(
         scene,
@@ -513,9 +582,20 @@ def generate_sionna_scene(
     all_coefficients: list[np.ndarray] = []
     all_vertices: list[np.ndarray] = []
     all_counts: list[np.ndarray] = []
-    batch_size = 64
+    batch_size = int(settings.get("path_batch_size", 64))
+    path_batch_count = 0
     for start in range(0, len(query_xyz), batch_size):
         stop = min(start + batch_size, len(query_xyz))
+        batch_started = time.perf_counter()
+        _append_progress(
+            progress_path,
+            {
+                "event": "path_batch_start",
+                "config_id": record.config_id,
+                "start": start,
+                "stop": stop,
+            },
+        )
         coefficients, vertices, counts, _ = _trace_batch(
             scene,
             query_xyz[start:stop],
@@ -525,6 +605,17 @@ def generate_sionna_scene(
         all_coefficients.append(coefficients)
         all_vertices.append(vertices)
         all_counts.append(counts)
+        path_batch_count += 1
+        _append_progress(
+            progress_path,
+            {
+                "event": "path_batch_complete",
+                "config_id": record.config_id,
+                "start": start,
+                "stop": stop,
+                "elapsed_seconds": time.perf_counter() - batch_started,
+            },
+        )
     coefficients, vertices, counts = _concatenate_path_batches(
         all_coefficients, all_vertices, all_counts
     )
@@ -542,20 +633,77 @@ def generate_sionna_scene(
             record.frequency_hz,
         )
     channel_mode = str(settings.get("channel_mode", "explicit_array"))
+    explicit_batch_count = 0
+    resumed_explicit_batches = 0
     if channel_mode == "explicit_array":
         explicit_batches: list[np.ndarray] = []
         explicit_batch_size = int(settings.get("explicit_batch_size", 16))
         for start in range(0, len(query_xyz), explicit_batch_size):
             stop = min(start + explicit_batch_size, len(query_xyz))
-            explicit_batches.append(
-                _trace_explicit_channel_batch(
+            signature = {
+                "schema_version": 1,
+                "config_id": record.config_id,
+                "scene": record.scene,
+                "frequency_hz": record.frequency_hz,
+                "array_size": record.array_size,
+                "seed": record.seed + start,
+                "start": start,
+                "stop": stop,
+                "max_depth": int(settings["max_depth"]),
+                "samples_per_source": int(settings["samples_per_source"]),
+                "diffuse_reflection": bool(settings["diffuse_reflection"]),
+                "synthetic_array": False,
+            }
+            checkpoint = explicit_checkpoint_dir / f"explicit_{start:04d}_{stop:04d}.npz"
+            explicit = _load_explicit_checkpoint(
+                checkpoint,
+                signature,
+                (stop - start, record.array_size),
+            )
+            if explicit is not None:
+                resumed_explicit_batches += 1
+                _append_progress(
+                    progress_path,
+                    {
+                        "event": "explicit_batch_resumed",
+                        "config_id": record.config_id,
+                        "start": start,
+                        "stop": stop,
+                        "checkpoint": str(checkpoint),
+                    },
+                )
+            else:
+                batch_started = time.perf_counter()
+                _append_progress(
+                    progress_path,
+                    {
+                        "event": "explicit_batch_start",
+                        "config_id": record.config_id,
+                        "start": start,
+                        "stop": stop,
+                    },
+                )
+                explicit = _trace_explicit_channel_batch(
                     scene,
                     query_xyz[start:stop],
                     record,
                     settings,
                     record.seed + start,
                 )
-            )
+                _save_explicit_checkpoint(checkpoint, signature, explicit)
+                _append_progress(
+                    progress_path,
+                    {
+                        "event": "explicit_batch_complete",
+                        "config_id": record.config_id,
+                        "start": start,
+                        "stop": stop,
+                        "checkpoint": str(checkpoint),
+                        "elapsed_seconds": time.perf_counter() - batch_started,
+                    },
+                )
+            explicit_batches.append(explicit)
+            explicit_batch_count += 1
         channels = np.concatenate(explicit_batches, axis=0)
     elif channel_mode == "spherical_reconstruction":
         channels = reconstructed_channels
@@ -648,6 +796,11 @@ def generate_sionna_scene(
         "solver": {
             "max_depth": int(settings["max_depth"]),
             "samples_per_source": int(settings["samples_per_source"]),
+            "path_batch_size": batch_size,
+            "path_batch_count": path_batch_count,
+            "explicit_batch_size": int(settings.get("explicit_batch_size", 16)),
+            "explicit_batch_count": explicit_batch_count,
+            "resumed_explicit_batches": resumed_explicit_batches,
             "synthetic_array_for_path_search": True,
             "element_channel": channel_mode,
         },
@@ -661,6 +814,17 @@ def generate_sionna_scene(
             "regime_codes": {"near": 0, "cross": 1, "far": 2},
         },
         "explicit_array_validation": explicit_validation,
+        "generation_elapsed_seconds": time.perf_counter() - generation_started,
     }
     write_json_atomic(Path(output_path).with_suffix(".json"), metadata)
+    _append_progress(
+        progress_path,
+        {
+            "event": "record_complete",
+            "config_id": record.config_id,
+            "cache": str(output_path),
+            "cache_sha256": metadata["cache_sha256"],
+            "elapsed_seconds": metadata["generation_elapsed_seconds"],
+        },
+    )
     return metadata
