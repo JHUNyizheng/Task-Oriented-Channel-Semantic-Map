@@ -32,47 +32,45 @@ tcsm-rt cases --config configs/full_rt.yaml
 ```
 
 The immutable generator still declares 96 configurations so completed cache IDs and hashes remain
-valid. The submission protocol uses a preregistered 66-configuration core: 18 train and 12 each for
-ID, geometry OOD, system OOD and compound OOD. The other 30 records are a conditional reserve and
-cannot enter the primary analysis unless a gate in `configs/core66_protocol.yaml` is triggered.
-Build and verify the machine-readable selection before launching a sparse queue:
+valid. The active submission protocol is the preregistered `Core-36-LF v2`: 12 train, 12 spatial-ID,
+and 12 geometry-OOD configurations. Each split retains the complete 28/39-GHz and
+64/128-element design over three scene families. The primary grid is a centered `25x25` grid at
+the unchanged 2-m spacing. Six completed `35x35` caches may be reused only through an exact,
+hash-tracked center crop. The previous Core-66 protocol is retained as historical evidence and is
+not the active completion denominator. Build and verify the active selection before launching a
+sparse queue:
 
 ```bash
-python scripts/build_core66_selection.py
-tcsm-rt prepare-sionna --config configs/full_rt_zhengyi.yaml \
-  --record-index-file configs/core66_selection.json
+PYTHONPATH=. python scripts/build_core36_lf_selection.py
+tcsm-rt prepare-sionna --config configs/full_rt_core36_lf_zhengyi.yaml \
+  --record-index-file configs/core36_lf_selection.json
 ```
 
 `--record-indices 2,3,4` may be used for a worker-specific queue. Explicit indices and the legacy
 half-open interval flags are mutually exclusive. Full training starts only after
-`training_label_coverage.json` confirms all 18 core training configurations, non-collapsed
+`training_label_coverage.json` confirms all 12 primary training configurations, non-collapsed
 near/cross/far labels, populated environment modalities and usable task-codebook coverage.
 
-The distributed allocation is recorded in `configs/compute_allocation.yaml`. `ZHENGYI` runs
-Sionna explicit-array generation and training seeds 11, 23 and 37. Mac Studio handles both full
-DeepMIMO cities and delegated training seeds 53 and 71 after importing the 18 core Sionna training
-caches through `scripts/stage_training_shard.py`. It accepts the packaged `.tar.gz` directly;
-the importer safely extracts the archive, rejects links/path traversal, and verifies every SHA-256
-digest and excludes all Sionna evaluation splits from the Mac worker. The two workers therefore
-produce disjoint training seeds. `scripts/merge_result_shard.py` verifies declared hashes and
-rewrites remote absolute paths before a shard enters the combined evidence directory.
+The no-Mac-Studio allocation is recorded in
+`configs/compute_allocation_core36_no_mac.yaml`. ZHENGYI and ZHENGYI4090 receive disjoint RT
+queues. ZHENGYI4090 subsequently runs training seeds 11, 23, 37, 53 and 71; independent seeds do
+not require separate physical hosts. The local Mac performs audit, statistics, figures and
+manuscript builds. Mac Studio is absent from all completion and merge gates.
 
 Point and grid training persist an atomic recovery state every 400 optimization steps. The state
 contains model and optimizer parameters, NumPy/Python/PyTorch random states, the completed step,
 loss history, and accumulated training time. A final checkpoint is treated as complete only when
-its companion history reaches step 8000. After the Mac worker finishes, the compute-artifact
-merger requires all 12 model configurations for seeds 53 and 71 and verifies the SHA-256 digest of
-48 checkpoint/history files before the five-seed evaluation can start on ZHENGYI.
-The Mac worker skips the four Sionna-backend tests only when its host lacks a usable LLVM/CUDA RT
-backend; ZHENGYI and GitHub CI continue to run the complete test set.
+its companion history reaches step 8000. The compute-artifact merger requires all declared model
+and seed combinations and verifies every checkpoint/history SHA-256 before evaluation.
 
 `scripts/run_zhengyi_sharded_full.sh` is retained as the legacy 96-record launcher and is not the
-submission protocol. Core-66 workers use the explicit queues in `configs/compute_allocation.yaml`.
+submission protocol. Core-36-LF workers use the explicit queues in
+`configs/compute_allocation_core36_no_mac.yaml`.
 Each worker writes an independent output directory; completed legacy-interval workers stop at a
-cache boundary before the explicit queue starts. The merger accepts exactly the 66 selected cache
-IDs, verifies every SHA-256 digest and rejects any undeclared reserve cache from the primary run.
-The full $35\times35$ query grid, 500,000-ray budget, six scene templates, all frequency-array
-cells, five training/evaluation seeds and published baselines remain unchanged.
+cache boundary before the explicit queue starts. The merger accepts exactly the 36 primary cache
+IDs, verifies every SHA-256 digest and rejects high-frequency diagnostics from the primary run.
+The 500,000-ray low-frequency budget, six scene templates, five training/evaluation seeds and
+published baselines remain unchanged.
 
 If a shard is restarted after a worker-specific failure, its process, log and existing cache hashes
 are recorded before a non-overlapping explicit queue is resumed. The metadata auditor may repair
@@ -86,19 +84,11 @@ holdout. The six transmitter views contain 110,280 valid receiver--transmitter s
 the external audit records the split counts, discarded no-path receivers, available tasks and
 cache hashes. It authorizes RSS and far-beam evidence only.
 
-On Mac Studio, the full worker command is:
+On ZHENGYI4090, the declared DeepMIMO cross-city protocol is:
 
 ```bash
-TCSM_SIONNA_TRAIN_SHARD=/path/to/zhengyi_sionna_train_shard \
-  bash scripts/run_mac_studio.sh
-```
-
-Before the Sionna training shard arrives, the Mac worker independently runs the declared
-DeepMIMO cross-city protocol:
-
-```bash
-tcsm-rt train-deepmimo-crosscity --config configs/deepmimo_crosscity_macstudio.yaml
-tcsm-rt evaluate-deepmimo-crosscity --config configs/deepmimo_crosscity_macstudio.yaml
+tcsm-rt train-deepmimo-crosscity --config configs/deepmimo_crosscity_zhengyi4090.yaml
+tcsm-rt evaluate-deepmimo-crosscity --config configs/deepmimo_crosscity_zhengyi4090.yaml
 ```
 
 This protocol trains only on the 60% contiguous New York spatial-training stripes and evaluates

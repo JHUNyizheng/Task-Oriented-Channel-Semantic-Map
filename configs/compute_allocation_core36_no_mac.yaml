@@ -1,0 +1,57 @@
+schema_version: 3
+evidence_run: tcsm_core36_lf_v2
+selection:
+  protocol: configs/core36_lf_protocol.yaml
+  manifest: configs/core36_lf_selection.json
+  declared_records: 96
+  primary_records: 36
+  primary_split_counts: {train: 12, id: 12, geometry_ood: 12}
+  accepted_legacy_candidates: [0, 1, 2, 32, 33, 34]
+  high_frequency_diagnostic_records: [64, 68, 72, 83, 87, 91]
+  reserve_records: []
+workers:
+  zhengyi_a:
+    platform: wsl2
+    accelerator: rtx_4000_ada_generation_laptop
+    rt_backend: llvm_ad_mono_polarized
+    config: configs/full_rt_core36_lf_zhengyi.yaml
+    primary_record_indices: [3, 6, 9, 35, 38, 41, 48, 51, 54, 57]
+    stages: [sionna_explicit_array]
+  zhengyi_b:
+    platform: wsl2
+    accelerator: rtx_4000_ada_generation_laptop
+    rt_backend: llvm_ad_mono_polarized
+    config: configs/full_rt_core36_lf_zhengyi.yaml
+    activation_gate: dual_worker_throughput_at_least_1_6x_single_worker
+    primary_record_indices: [4, 7, 10, 36, 39, 42, 49, 52, 55, 58]
+    stages: [sionna_explicit_array]
+  zhengyi4090:
+    platform: wsl2
+    accelerator: rtx_4090
+    rt_backend_preference: [cuda_ad_mono_polarized, llvm_ad_mono_polarized]
+    cuda_activation_gate: batch_sweep_passes_without_oom
+    config: configs/full_rt_core36_lf_zhengyi.yaml
+    primary_record_indices: [5, 8, 11, 37, 40, 43, 50, 53, 56, 59]
+    train_seeds: [11, 23, 37, 53, 71]
+    stages: [cuda_batch_sweep, sionna_explicit_array, point_training, grid_training, deepmimo_crosscity, evaluation]
+  local_mac:
+    platform: macos_apple_silicon
+    accelerator: mps
+    formal_training: false
+    stages: [cache_audit, statistics, figures, manuscript_build, github_release, overleaf_build]
+  mac_studio:
+    availability: unavailable
+    required: false
+    primary_record_indices: []
+    train_seeds: []
+merge_policy:
+  require_cache_sha256: true
+  reject_conflicting_cache_hash: true
+  require_primary_grid_size: 25
+  allow_legacy_center_crop_only: true
+  legacy_source_grid_size: 35
+  preserve_raw_metrics: true
+  require_disjoint_sionna_records: true
+  required_primary_sionna_records: 36
+  combined_train_seeds: [11, 23, 37, 53, 71]
+  high_frequency_diagnostics_excluded_from_primary: true

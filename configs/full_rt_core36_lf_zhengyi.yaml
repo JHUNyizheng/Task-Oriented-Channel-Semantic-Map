@@ -1,18 +1,18 @@
 run:
-  name: zhengyi_sionna_full
+  name: tcsm_core36_lf_v2
   seed: 20260719
-  output_dir: outputs/zhengyi_sionna
+  output_dir: outputs/core36_lf_v2
   resume: true
   device: cuda
   train_steps: 8000
   training_checkpoint_interval: 400
-  train_seeds: [11, 23, 37]
+  train_seeds: [11, 23, 37, 53, 71]
   eval_seeds: [101, 211, 307, 401, 503]
 data:
-  grid_size: 35
+  grid_size: 25
   cell_size_m: 2.0
-  support_counts: [1, 2, 3, 5, 8, 12, 24, 61, 122, 245]
-  sampling_modes: [scatter, trajectory, coverage_trajectory]
+  support_counts: [1, 2, 3, 6, 12, 31, 63, 125]
+  sampling_modes: [scatter, trajectory]
   sionna:
     enabled: true
     scenes:
@@ -23,15 +23,15 @@ data:
       - etoile
       - san_francisco
     configs_per_split: {train: 32, id: 16, geometry_ood: 16, system_ood: 16, compound_ood: 16}
-    expected_training_configurations: 18
-    selection_protocol: core66_protocol.yaml
-    selection_manifest: core66_selection.json
+    expected_training_configurations: 12
+    selection_protocol: core36_lf_protocol.yaml
+    selection_manifest: core36_lf_selection.json
     train_frequencies_ghz: [28, 39]
     train_arrays: [64, 128]
     ood_frequencies_ghz: [60, 73]
     ood_arrays: [96, 160]
     max_depth: 4
-    samples_per_source: 100000
+    samples_per_source: 500000
     diffuse_reflection: true
     material_frequency_policy: clamp_to_itu_range
     channel_mode: explicit_array
@@ -63,17 +63,17 @@ system:
 thresholds:
   fixed_bps_hz: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
   low_to_high_ratio: 0.2666666667
-  sensitivity_train_seeds: [11, 23, 37]
+  sensitivity_train_seeds: [11, 37, 71]
   models: [storm, gated_hlg]
-  support_count: 24
+  support_count: 12
   sampling_mode: trajectory
   eval_seeds: [101, 211, 307, 401, 503]
   adaptive_clip_bps_hz: [0.1, 1.0]
   mcs_spectral_efficiency_bps_hz: [0.2344, 0.3770, 0.6016, 0.8770, 1.1758, 1.4766, 1.6953, 1.9141, 2.1602, 2.4063, 2.5703, 2.7305, 3.0293, 3.3223, 3.6094, 3.9023, 4.2129, 4.5234, 4.8164, 5.1152, 5.3320, 5.5547]
 robustness:
   models: [set_transformer, storm, radiounet, gated_hlg]
-  train_seeds: [11, 23, 37]
-  support_count: 24
+  train_seeds: [11, 37, 71]
+  support_count: 12
   sampling_mode: trajectory
   eval_seeds: [101, 211, 307, 401, 503]
   position_error_m: [0, 0.25, 0.5, 1, 2, 5, 10]
@@ -84,7 +84,7 @@ robustness:
 deployment:
   models: [knn, idw, deepsets, set_transformer, radiounet, storm, fno, wno, gated_hlg]
   train_seeds: [11]
-  support_count: 24
+  support_count: 12
   sampling_mode: trajectory
   devices: [auto, cpu]
   warmup: 5
@@ -93,7 +93,7 @@ case_gallery:
   baseline_candidates: [storm, set_transformer, radiounet]
   train_seed: 11
   eval_seed: 101
-  support_count: 24
+  support_count: 12
   sampling_mode: trajectory
 statistics:
   bootstrap_samples: 5000

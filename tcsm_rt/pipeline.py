@@ -55,7 +55,7 @@ def write_manifests(config: dict[str, Any]) -> Path:
     if selection_name:
         selection_path = Path(config["_config_path"]).parent / str(selection_name)
         selection = json.loads(selection_path.read_text(encoding="utf-8"))
-        write_json_atomic(root / "core66_selection.json", selection)
+        write_json_atomic(root / Path(str(selection_name)).name, selection)
     return root
 
 

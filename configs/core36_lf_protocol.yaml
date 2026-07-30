@@ -1,0 +1,100 @@
+schema_version: 2
+protocol_id: tcsm_sionna_core36_lf_v2
+amends_protocol: tcsm_sionna_core66_v1
+amendment_reason: mac_studio_unavailable_and_high_frequency_ray_budget_not_converged
+amendment_timing: before_official_model_result_inspection
+declared_record_count: 96
+primary_record_count: 36
+progress_denominator: 36
+
+# Record IDs remain tied to the immutable 96-record manifest. The primary
+# estimand is restricted to the converged 28/39-GHz evidence domain.
+primary_records:
+  train: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+  id: [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43]
+  geometry_ood: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59]
+
+# These six configurations span all official scene families and the extrema of
+# the 60/73-GHz, 96/160-element design. They are diagnostics, not primary
+# inferential samples, and must be regenerated after a separate ray-budget gate.
+high_frequency_diagnostic_records: [64, 68, 72, 83, 87, 91]
+high_frequency_provisional_cache_policy: reject_until_budget_converges
+reserve_records: []
+
+query_grid:
+  primary_grid_size: 25
+  cell_size_m: 2.0
+  query_count: 625
+  legacy_grid_size: 35
+  legacy_center_crop:
+    start_index_per_axis: 5
+    stop_index_per_axis: 30
+  preserve_primary_grid_in_full: true
+
+selection_requirements:
+  primary_split_counts: {train: 12, id: 12, geometry_ood: 12}
+  scene_count_per_split: 3
+  records_per_scene: 4
+  system_cells_per_scene:
+    - [28000000000, 64]
+    - [28000000000, 128]
+    - [39000000000, 64]
+    - [39000000000, 128]
+  placement_indices: [0]
+  official_scene_count: 6
+  selected_samples_per_source: 500000
+
+selection_rationale:
+  - Training and ID retain every 28/39-GHz and 64/128-element cell in the three in-domain scenes.
+  - Geometry OOD retains the same four system cells in three disjoint official scene families.
+  - Twelve configuration clusters per evaluation split support configuration-level bootstrap and paired tests.
+  - Repeated training placements and unconverged high-frequency cells do not enter the primary estimand.
+  - The 25x25 grid retains 2-m spatial resolution and reduces full explicit-array work; six completed 35x35 caches provide a matched resolution audit.
+
+completed_cache_reuse:
+  candidate_record_indices: [0, 1, 2, 32, 33, 34]
+  required_checks:
+    - immutable_record_identity
+    - source_cache_sha256
+    - finite_arrays
+    - exact_center_crop_coordinates
+    - derived_cache_sha256
+    - independent_metric_recomputation
+
+statistics:
+  cluster_unit: config_id
+  bootstrap_samples: 5000
+  confidence: 0.95
+  paired_test: wilcoxon
+  multiple_testing: holm
+  leave_one_scene_family_out: true
+  practical_margin_policy_gap_bps_hz: 0.05
+  p90_ci_half_width_limit_bps_hz: 0.10
+  support_counts: [1, 2, 3, 6, 12, 31, 63, 125]
+  primary_support_counts: [3, 6, 12, 31]
+  sampling_modes: [scatter, trajectory]
+
+evidence_gates:
+  - id: cache_integrity
+    condition: Every primary cache passes identity, SHA-256, schema, finite-value, and official-source checks.
+  - id: spatial_isolation
+    condition: Training, ID, and geometry-OOD windows obey the immutable manifest and contain no cross-split query duplication.
+  - id: regime_coverage
+    condition: Each near/cross/far class occupies at least 1% of valid points in each evaluation split.
+  - id: metric_independence
+    condition: Policy gap, rate, RMSE, task accuracy, and calibration are recomputed outside the training cache writer.
+  - id: statistics_complete
+    condition: The complete 36-configuration primary table is frozen before any high-frequency diagnostic is interpreted.
+
+failure_policy:
+  - A failed primary cache is regenerated under the same record ID in a new mutually exclusive output directory.
+  - No data-dependent primary record is added or substituted.
+  - A failed regime-coverage gate narrows the corresponding class-specific claim; it does not activate the historical Reserve-30.
+  - High-frequency diagnostics cannot repair or enlarge the primary Core-36-LF estimand.
+
+reporting_rules:
+  - Report Core-36-LF results regardless of method ranking.
+  - Mark every 35-to-25 crop as a deterministic derived cache and retain the parent hash.
+  - Report 60/73-GHz results only as diagnostic cases after their separate convergence gate.
+  - Keep DeepMIMO full-receiver evaluation separate as RSS/far-beam external evidence.
+  - State that ray tracing does not replace over-the-air near/far mixed-field measurements.
